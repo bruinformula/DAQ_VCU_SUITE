@@ -90,6 +90,14 @@ export default function TelemetryChart({ telemetryRef, isConnected, selectedSign
     let animationFrameId;
     let lastTimestamp = 0;
     
+    // Wipe the data buffer cleanly upon reconnection to prevent massive time gaps
+    // from squishing the X-axis scale and making the graph appear frozen.
+    if (dataRef.current && dataRef.current.length > 0) {
+      dataRef.current.forEach(arr => {
+        arr.length = 0; // Clear array in-place
+      });
+    }
+    
     // Keep max 500 points on screen for the "oscilloscope" effect (10 seconds at 50Hz)
     const MAX_POINTS = 500; 
 
