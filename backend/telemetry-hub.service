@@ -5,7 +5,10 @@ After=network.target
 [Service]
 # We assume the Pi's default user is 'pi', but this can be adjusted.
 User=pi
-WorkingDirectory=/home/pi/telemetry_project/backend
+WorkingDirectory=/home/pi/DAQ_VCU_SUITE/backend
+Environment="LOG_DIR=/home/pi/telemetry_logs"
+Environment="SERIAL_BAUD=115200"
+
 # Execute the FastAPI server on 0.0.0.0 to listen on all interfaces (USB and Wi-Fi)
 ExecStart=/usr/bin/python3 -m uvicorn backend_engine:app --host 0.0.0.0 --port 8000
 

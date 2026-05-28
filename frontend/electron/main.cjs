@@ -10,8 +10,9 @@ function createWindow() {
     height: 800,
     title: "Bruin Racing Telemetry Hub",
     webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, 'preload.cjs')
     }
   });
 

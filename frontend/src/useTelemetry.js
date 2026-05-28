@@ -13,10 +13,20 @@ export function useTelemetry() {
   // The React components will read from this ref using requestAnimationFrame,
   // or pass this ref directly to uPlot for native rendering.
   const telemetryRef = useRef({
-    timestamp: 0,
-    can: { Pack_SOC: 0, Pack_Summed_Voltage: 0, INV_Motor_Speed: 0 },
-    mdu: { suspension_fl: 0, steering_angle: 0 },
-    is_logging: false
+    ts: 0,
+    gps: { lat: 0, lon: 0, alt: 0, vel: 0, hdg: 0, fix: 0, sats: 0 },
+    imu: { ax: 0, ay: 0, az: 0, pitch: 0, roll: 0, yaw: 0, cal: 0 },
+    inv: { rpm: 0, mot_t: 0, cool_t: 0, vdc: 0, idc: 0, tq_cmd: 0, tq_fb: 0, vsm: 0, faults: 0 },
+    bms: { v: 0, i: 0, soc: 0, hi_t: 0, lo_t: 0, hi_cv: 0, lo_cv: 0, dcl: 0 },
+    vcu: { spd: 0, apps1: 0, apps2: 0, bse: 0, rtd: 0 },
+    sdu: [
+      { pos: 'FL', shock: 0, brake: 0, wrpm: 0, tire: [0,0,0,0] },
+      { pos: 'FR', shock: 0, brake: 0, wrpm: 0, tire: [0,0,0,0] },
+      { pos: 'RL', shock: 0, brake: 0, wrpm: 0, tire: [0,0,0,0] },
+      { pos: 'RR', shock: 0, brake: 0, wrpm: 0, tire: [0,0,0,0] },
+    ],
+    log: false,
+    stats: { parsed: 0, errors: 0 }
   });
 
   useEffect(() => {
@@ -35,9 +45,10 @@ export function useTelemetry() {
           telemetryRef.current = data;
           
           // Only update React state for UI-breaking changes to prevent 50Hz re-renders
-          if (data.is_logging !== isLogging) {
-            setIsLogging(data.is_logging);
-          }
+          setIsLogging(prev => {
+            if (prev !== data.log) return data.log;
+            return prev;
+          });
         } catch (err) {
           console.error("Telemetry parsing error", err);
         }
@@ -63,7 +74,7 @@ export function useTelemetry() {
       clearTimeout(reconnectTimer);
       if (wsRef.current) wsRef.current.close();
     };
-  }, [isLogging]);
+  }, []);
 
   const toggleLogging = () => {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;

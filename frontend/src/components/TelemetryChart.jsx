@@ -1,48 +1,62 @@
 import { useEffect, useRef } from 'react';
 import uPlot from 'uplot';
 import 'uplot/dist/uPlot.min.css';
+import { SIGNAL_MAP, getSignalValue } from '../signals';
 
-export default function TelemetryChart({ telemetryRef, isConnected }) {
+export default function TelemetryChart({ telemetryRef, isConnected, selectedSignals }) {
   const chartRef = useRef(null);
   const uplotInst = useRef(null);
-  const dataRef = useRef([[], [], []]); // [timestamps, motor_speed, pack_v]
+  
+  // Array of arrays: [timestamps, series1, series2, ...]
+  const dataRef = useRef([]);
 
   useEffect(() => {
     if (!chartRef.current) return;
 
-    // uPlot configuration
+    // Build series configuration based on selected signals
+    const activeSignals = selectedSignals.map(id => SIGNAL_MAP[id]).filter(Boolean);
+    
+    // Reset data buffer for the new series configuration
+    // Initialize with empty arrays: one for time, plus one for each active signal
+    dataRef.current = [[]];
+    activeSignals.forEach(() => dataRef.current.push([]));
+
+    // Gather unique units to create axes/scales
+    const units = [...new Set(activeSignals.map(s => s.unit))];
+    
+    const scales = { x: { time: false } };
+    const axes = [
+      { grid: { stroke: "rgba(255,255,255,0.1)" }, stroke: "rgba(255,255,255,0.5)" }
+    ];
+
+    units.forEach((unit, idx) => {
+      scales[unit] = { auto: true };
+      axes.push({
+        scale: unit,
+        side: idx % 2 === 0 ? 3 : 1, // Alternate sides (3=right, 1=left)
+        grid: { show: idx === 0 ? true : false, stroke: "rgba(255,255,255,0.05)" },
+        stroke: "rgba(255,255,255,0.5)",
+        values: (u, vals) => vals.map(v => v + unit)
+      });
+    });
+
+    const seriesConfig = [
+      { label: "Time" },
+      ...activeSignals.map(s => ({
+        label: s.name,
+        stroke: s.color,
+        width: 2,
+        scale: s.unit
+      }))
+    ];
+
     const opts = {
       width: chartRef.current.clientWidth,
       height: chartRef.current.clientHeight,
       title: "Powertrain Telemetry (50Hz)",
-      series: [
-        { label: "Time" },
-        {
-          label: "Motor RPM",
-          stroke: "#00e5ff",
-          width: 2,
-        },
-        {
-          label: "Pack Voltage",
-          stroke: "#00ff7f",
-          width: 2,
-          scale: "v"
-        }
-      ],
-      axes: [
-        { grid: { stroke: "rgba(255,255,255,0.1)" }, stroke: "rgba(255,255,255,0.5)" },
-        { grid: { stroke: "rgba(255,255,255,0.1)" }, stroke: "rgba(255,255,255,0.5)" },
-        { 
-          scale: "v", 
-          side: 1, 
-          grid: { show: false },
-          stroke: "rgba(255,255,255,0.5)"
-        }
-      ],
-      scales: {
-        x: { time: false }, // Use simple relative counters or pure timestamps for performance
-        v: { auto: true }
-      }
+      series: seriesConfig,
+      axes: axes,
+      scales: scales
     };
 
     const u = new uPlot(opts, dataRef.current, chartRef.current);
@@ -50,54 +64,56 @@ export default function TelemetryChart({ telemetryRef, isConnected }) {
 
     // Handle window resize
     const handleResize = () => {
-      u.setSize({
-        width: chartRef.current.clientWidth,
-        height: chartRef.current.clientHeight
-      });
+      if (chartRef.current && uplotInst.current) {
+        uplotInst.current.setSize({
+          width: chartRef.current.clientWidth,
+          height: chartRef.current.clientHeight
+        });
+      }
     };
     window.addEventListener('resize', handleResize);
 
     return () => {
       u.destroy();
+      uplotInst.current = null;
       window.removeEventListener('resize', handleResize);
     };
-  }, []);
+  }, [selectedSignals]);
 
   // Polling loop to push data from telemetryRef into uPlot at screen refresh rate
   useEffect(() => {
     let animationFrameId;
     let lastTimestamp = 0;
     
-    // Keep max 500 points on screen for the "oscilloscope" effect
+    // Keep max 500 points on screen for the "oscilloscope" effect (10 seconds at 50Hz)
     const MAX_POINTS = 500; 
 
     const tick = () => {
-      if (isConnected && telemetryRef.current) {
+      if (isConnected && telemetryRef.current && uplotInst.current && dataRef.current.length > 0) {
         const data = telemetryRef.current;
         
         // Only append if the timestamp moved forward (new data arrived)
-        if (data.timestamp > lastTimestamp) {
-          lastTimestamp = data.timestamp;
+        if (data.ts > lastTimestamp) {
+          lastTimestamp = data.ts;
           
-          const times = dataRef.current[0];
-          const speeds = dataRef.current[1];
-          const volts = dataRef.current[2];
-
-          times.push(data.timestamp);
-          speeds.push(data.can.INV_Motor_Speed);
-          volts.push(data.can.Pack_Summed_Voltage);
+          const activeSignals = selectedSignals.map(id => SIGNAL_MAP[id]).filter(Boolean);
+          
+          // dataRef.current[0] is time
+          dataRef.current[0].push(data.ts);
+          
+          // Push each active signal's value
+          activeSignals.forEach((signal, idx) => {
+            const val = getSignalValue(data, signal.id);
+            dataRef.current[idx + 1].push(val !== undefined ? val : null);
+          });
 
           // Shift out old data
-          if (times.length > MAX_POINTS) {
-            times.shift();
-            speeds.shift();
-            volts.shift();
+          if (dataRef.current[0].length > MAX_POINTS) {
+            dataRef.current.forEach(arr => arr.shift());
           }
 
           // Native WebGL/Canvas update, totally bypasses React!
-          if (uplotInst.current) {
-            uplotInst.current.setData(dataRef.current);
-          }
+          uplotInst.current.setData(dataRef.current);
         }
       }
       animationFrameId = requestAnimationFrame(tick);
@@ -105,7 +121,7 @@ export default function TelemetryChart({ telemetryRef, isConnected }) {
 
     tick();
     return () => cancelAnimationFrame(animationFrameId);
-  }, [isConnected, telemetryRef]);
+  }, [isConnected, telemetryRef, selectedSignals]);
 
   return <div ref={chartRef} style={{ width: '100%', height: '100%' }} />;
 }
