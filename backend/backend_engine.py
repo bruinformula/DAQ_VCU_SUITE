@@ -179,17 +179,17 @@ class TelemetryState:
             self.inv_torque_fb = signals.get('INV_Fast_Torque_Feedback', self.inv_torque_fb)
 
         # BMS
-        elif can_id == 1712:
-            self.bms_pack_current = signals.get('Pack_Current', self.bms_pack_current)
-            self.bms_pack_voltage = signals.get('Pack_Summed_Voltage', self.bms_pack_voltage)
-            self.bms_soc = signals.get('Pack_SOC', self.bms_soc)
-        elif can_id == 1713:
+        elif can_id == 1712: # BMS_Voltages
+            self.bms_high_cell_v = signals.get('High_Cell_Voltage', self.bms_high_cell_v)
+            self.bms_low_cell_v = signals.get('Low_Cell_Voltage', self.bms_low_cell_v)
+        elif can_id == 1713: # BMS_Temperatures
             self.bms_high_temp = signals.get('High_Temperature', self.bms_high_temp)
             self.bms_low_temp = signals.get('Low_Temperature', self.bms_low_temp)
             self.bms_dcl = signals.get('Pack_DCL', self.bms_dcl)
-        elif can_id == 1714:
-            self.bms_high_cell_v = signals.get('High_Cell_Voltage', self.bms_high_cell_v)
-            self.bms_low_cell_v = signals.get('Low_Cell_Voltage', self.bms_low_cell_v)
+        elif can_id == 1714: # BMS_Soc_Curr_Pack
+            self.bms_pack_current = signals.get('Pack_Current', self.bms_pack_current)
+            self.bms_pack_voltage = signals.get('Pack_Summed_Voltage', self.bms_pack_voltage)
+            self.bms_soc = signals.get('Pack_SOC', self.bms_soc)
 
         # VCU
         elif can_id == 1280:
