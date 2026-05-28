@@ -29,7 +29,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from slcan_parser import parse_slcan_frame, SlcanFrame
-from dbc_decoder import decode_can_frame, get_message_name, BFR_CAN_DB
+from dbc_decoder import decode_can_frame
 from sdu_decoder import decode_sdu_frame, parse_sdu_id, BOARD_TYPE_SDU, BOARD_TYPE_TSPMU
 
 # ---------------------------------------------------------------------------
