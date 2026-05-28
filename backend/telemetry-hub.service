@@ -10,7 +10,8 @@ Environment="LOG_DIR=/home/daqpi/telemetry_logs"
 Environment="SERIAL_BAUD=115200"
 
 # Execute the FastAPI server on 0.0.0.0 to listen on all interfaces (USB and Wi-Fi)
-ExecStart=/usr/bin/python3 -m uvicorn backend_engine:app --host 0.0.0.0 --port 8000
+# We use a virtual environment located at /home/daqpi/venv
+ExecStart=/home/daqpi/venv/bin/python -m uvicorn backend_engine:app --host 0.0.0.0 --port 8000
 
 # Automatically restart if the process crashes
 Restart=always

@@ -1,0 +1,398 @@
+VERSION ""
+
+
+NS_ : 
+	NS_DESC_
+	CM_
+	BA_DEF_
+	BA_
+	VAL_
+	CAT_DEF_
+	CAT_
+	FILTER
+	BA_DEF_DEF_
+	EV_DATA_
+	ENVVAR_DATA_
+	SGTYPE_
+	SGTYPE_VAL_
+	BA_DEF_SGTYPE_
+	BA_SGTYPE_
+	SIG_TYPE_REF_
+	VAL_TABLE_
+	SIG_GROUP_
+	SIG_VALTYPE_
+	SIGTYPE_VALTYPE_
+	BO_TX_BU_
+	BA_DEF_REL_
+	BA_REL_
+	BA_DEF_DEF_REL_
+	BU_SG_REL_
+	BU_EV_REL_
+	BU_BO_REL_
+	SG_MUL_VAL_
+
+BS_:
+
+BU_: INV BMS VCU BMS Third_Party_Device
+
+
+BO_ 173 Inverter_Mod_And_Flux_Info: 8 INV
+ SG_ INV_Iq_Command : 48|16@1- (0.1,0) [-3276.8|3276.7] "current:A" Vector__XXX
+ SG_ INV_Id_Command : 32|16@1- (0.1,0) [-3276.8|3276.7] "current:A" Vector__XXX
+ SG_ INV_Flux_Weakening_Output : 16|16@1- (0.1,0) [-3276.8|3276.7] "current:A" Vector__XXX
+ SG_ INV_Modulation_Index : 0|16@1- (0.0001,0) [-3.2768|3.2767] "" Vector__XXX
+
+BO_ 172 Inverter_Torque_And_Timer_Info: 8 INV
+ SG_ INV_Power_On_Timer : 32|32@1+ (0.003,0) [0|12884800] "time:second" Vector__XXX
+ SG_ INV_Torque_Feedback : 16|16@1- (0.1,0) [-3276.8|3276.7] "torque:N.m" Vector__XXX
+ SG_ INV_Commanded_Torque : 0|16@1- (0.1,0) [-3276.8|3276.7] "torque:N.m" Vector__XXX
+
+BO_ 194 Invert_Read_Write_Param_Response: 8 INV
+ SG_ INV_Parameter_Response_Write_OK : 16|1@1+ (1,0) [0|1] "" Vector__XXX
+ SG_ INV_Parameter_Response_Data : 32|16@1- (1,0) [-32768|32767] "" Vector__XXX
+ SG_ INV_Parameter_Response_Addr : 0|16@1+ (1,0) [0|65535] "" Vector__XXX
+
+BO_ 193 Inverte_Read_Write_Param_Command: 8 VCU
+ SG_ VCU_INV_Parameter_Data : 32|16@1- (1,0) [-32768|32767] "" Vector__XXX
+ SG_ VCU_INV_Parameter_RW_Command : 16|1@1+ (1,0) [0|1] "" Vector__XXX
+ SG_ VCU_INV_Parameter_Address : 0|16@1+ (1,0) [0|65535] "" Vector__XXX
+
+BO_ 192 Inverter_Command_Message: 8 VCU
+ SG_ VCU_INV_Inverter_Enable : 40|1@1+ (1,0) [0|1] "" Vector__XXX
+ SG_ VCU_INV_Direction_Command : 32|1@1+ (1,0) [0|1] "" Vector__XXX
+ SG_ VCU_INV_Speed_Command : 16|16@1- (1,0) [-32768|32767] "angular_speed:rpm" Vector__XXX
+ SG_ VCU_INV_Torque_Command : 0|16@1- (0.1,0) [-3276.8|3276.7] "torque:N.m" Vector__XXX
+ SG_ VCU_INV_Inverter_Discharge : 41|1@1+ (1,0) [0|1] "" Vector__XXX
+ SG_ VCU_INV_Torque_Limit_Command : 48|16@1- (0.1,0) [-3276.8|3276.7] "torque:N.m" Vector__XXX
+ SG_ VCU_INV_Speed_Mode_Enable : 42|1@1+ (1,0) [0|1] "" Vector__XXX
+ SG_ VCU_INV_Rolling_Counter : 44|4@1+ (1,0) [0|15] "" Vector__XXX
+
+BO_ 171 Inverter_Fault_Codes: 8 INV
+ SG_ INV_Run_Fault_Hi : 48|16@1+ (1,0) [0|65535] "" Vector__XXX
+ SG_ INV_Post_Fault_Hi : 16|16@1+ (1,0) [0|65535] "" Vector__XXX
+ SG_ INV_Run_Fault_Lo : 32|16@1+ (1,0) [0|65535] "" Vector__XXX
+ SG_ INV_Post_Fault_Lo : 0|16@1+ (1,0) [0|65535] "" Vector__XXX
+
+BO_ 170 Inverter_Internal_States: 8 INV
+ SG_ INV_Direction_Command : 56|1@1+ (1,0) [0|1] "" Vector__XXX
+ SG_ INV_Inverter_Enable_State : 48|1@1+ (1,0) [0|1] "" Vector__XXX
+ SG_ INV_Relay_3_Status : 26|1@1+ (1,0) [0|1] "" Vector__XXX
+ SG_ INV_Relay_4_Status : 27|1@1+ (1,0) [0|1] "" Vector__XXX
+ SG_ INV_Relay_2_Status : 25|1@1+ (1,0) [0|1] "" Vector__XXX
+ SG_ INV_Inverter_Run_Mode : 32|1@1+ (1,0) [0|1] "" Vector__XXX
+ SG_ INV_Inverter_Command_Mode : 40|1@1+ (1,0) [0|1] "" Vector__XXX
+ SG_ INV_Relay_1_Status : 24|1@1+ (1,0) [0|1] "" Vector__XXX
+ SG_ INV_Inverter_State : 16|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ INV_VSM_State : 0|8@1+ (1,0) [0|15] "" Vector__XXX
+ SG_ INV_Inverter_Enable_Lockout : 55|1@1+ (1,0) [0|1] "" Vector__XXX
+ SG_ INV_Inverter_Discharge_State : 37|3@1+ (1,0) [0|7] "" Vector__XXX
+ SG_ INV_Relay_5_Status : 28|1@1+ (1,0) [0|1] "" Vector__XXX
+ SG_ INV_Relay_6_Status : 29|1@1+ (1,0) [0|1] "" Vector__XXX
+ SG_ INV_BMS_Active : 57|1@1+ (1,0) [0|1] "" Vector__XXX
+ SG_ INV_BMS_Limiting_Motor_Torque : 58|1@1+ (1,0) [0|1] "" Vector__XXX
+ SG_ INV_PWM_Frequency : 8|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ INV_Limit_Max_Speed : 59|1@1+ (1,0) [0|1] "" Vector__XXX
+ SG_ INV_Limit_Hot_Spot : 60|1@1+ (1,0) [0|1] "" Vector__XXX
+ SG_ INV_Low_Speed_Limiting : 61|1@1+ (1,0) [0|1] "" Vector__XXX
+ SG_ INV_Rolling_Counter : 44|4@1+ (1,0) [0|15] "" Vector__XXX
+ SG_ INV_Limit_Coolant_Derating : 62|1@1+ (1,0) [0|1] "" Vector__XXX
+ SG_ INV_Self_Sensing_Assist_Enable : 33|1@1+ (1,0) [0|1] "" Vector__XXX
+ SG_ INV_Limit_Stall_Burst_Model : 63|1@1+ (1,0) [0|1] "" Vector__XXX
+ SG_ INV_Burst_Model_Mode : 49|1@1+ (1,0) [0|1] "" Vector__XXX
+ SG_ INV_Key_Switch_Start_Status : 54|1@1+ (1,0) [0|1] "" Vector__XXX
+ SG_ INV_BMS_Limiting_Regen_Torque : 50|1@1+ (1,0) [0|0] "" Vector__XXX
+
+BO_ 169 Inverter_Internal_Voltages: 8 INV
+ SG_ INV_Ref_Voltage_12_0 : 48|16@1- (0.01,0) [-327.68|327.67] "voltage:V" Vector__XXX
+ SG_ INV_Ref_Voltage_5_0 : 32|16@1- (0.01,0) [-327.68|327.67] "voltage:V" Vector__XXX
+ SG_ INV_Ref_Voltage_2_5 : 16|16@1- (0.01,0) [-327.68|327.67] "voltage:V" Vector__XXX
+ SG_ INV_Ref_Voltage_1_5 : 0|16@1- (0.01,0) [-327.68|327.67] "voltage:V" Vector__XXX
+
+BO_ 168 Inverter_Flux_ID_IQ_Info: 8 INV
+ SG_ INV_Iq : 48|16@1- (0.1,0) [-3276.8|3276.7] "current:A" Vector__XXX
+ SG_ INV_Id : 32|16@1- (0.1,0) [-3276.8|3276.7] "current:A" Vector__XXX
+ SG_ INV_Vq_ff : 16|16@1- (0.1,0) [-3276.7|3276.7] "voltage:V" Vector__XXX
+ SG_ INV_Vd_ff : 0|16@1- (0.1,0) [-3276.7|3276.7] "voltage:V" Vector__XXX
+
+BO_ 167 Inverter_Voltage_Info: 8 INV
+ SG_ INV_VBC_Vq_Voltage : 48|16@1- (0.1,0) [-3276.8|3276.7] "voltage:V" Vector__XXX
+ SG_ INV_VAB_Vd_Voltage : 32|16@1- (0.1,0) [-3276.8|3276.7] "voltage:V" Vector__XXX
+ SG_ INV_Output_Voltage : 16|16@1- (0.1,0) [-3276.8|3276.7] "voltage:V" Vector__XXX
+ SG_ INV_DC_Bus_Voltage : 0|16@1- (0.1,0) [-3276.8|3276.7] "voltage:V" Vector__XXX
+
+BO_ 166 Inverter_Current_Info: 8 INV
+ SG_ INV_DC_Bus_Current : 48|16@1- (0.1,0) [-3276.8|3276.7] "current:A" Vector__XXX
+ SG_ INV_Phase_C_Current : 32|16@1- (0.1,0) [-3276.8|3276.7] "current:A" Vector__XXX
+ SG_ INV_Phase_B_Current : 16|16@1- (0.1,0) [-3276.8|3276.7] "current:A" Vector__XXX
+ SG_ INV_Phase_A_Current : 0|16@1- (0.1,0) [-3276.8|3276.7] "current:A" Vector__XXX
+
+BO_ 165 Inverter_Motor_Position_Info: 8 INV
+ SG_ INV_Delta_Resolver_Filtered : 48|16@1- (0.1,0) [-3276.8|3276.7] "angle:deg" Vector__XXX
+ SG_ INV_Electrical_Output_Frequency : 32|16@1- (0.1,0) [-3276.8|3276.7] "frequency:Hz" Vector__XXX
+ SG_ INV_Motor_Speed : 16|16@1- (1,0) [-32768|32767] "angular_speed:rpm" Vector__XXX
+ SG_ INV_Motor_Angle_Electrical : 0|16@1+ (0.1,0) [0|6553.5] "angle:deg" Vector__XXX
+
+BO_ 164 Inverter_Digital_Input_Status: 8 INV
+ SG_ INV_Digital_Input_5 : 32|1@1+ (1,0) [0|1] "" Vector__XXX
+ SG_ INV_Digital_Input_4 : 24|1@1+ (1,0) [0|1] "" Vector__XXX
+ SG_ INV_Digital_Input_3 : 16|1@1+ (1,0) [0|1] "" Vector__XXX
+ SG_ INV_Digital_Input_2 : 8|1@1+ (1,0) [0|1] "" Vector__XXX
+ SG_ INV_Digital_Input_1 : 0|1@1+ (1,0) [0|1] "" Vector__XXX
+ SG_ INV_Digital_Input_6 : 40|1@1+ (1,0) [0|1] "" Vector__XXX
+ SG_ INV_Digital_Input_7 : 48|1@1+ (1,0) [0|1] "" Vector__XXX
+ SG_ INV_Digital_Input_8 : 56|1@1+ (1,0) [0|1] "" Vector__XXX
+
+BO_ 163 Inverter_Analog_Input_Voltages: 8 INV
+ SG_ INV_Analog_Input_1 : 0|10@1+ (0.01,0) [0|10.23] "voltage:V" Vector__XXX
+ SG_ INV_Analog_Input_2 : 10|10@1+ (0.01,0) [0|10.23] "voltage:V" Vector__XXX
+ SG_ INV_Analog_Input_3 : 20|10@1+ (0.01,0) [0|10.23] "voltage:V" Vector__XXX
+ SG_ INV_Analog_Input_4 : 32|10@1+ (0.01,0) [0|10.23] "voltage:V" Vector__XXX
+ SG_ INV_Analog_Input_5 : 42|10@1+ (0.01,0) [0|10.23] "voltage:V" Vector__XXX
+ SG_ INV_Analog_Input_6 : 52|10@1+ (0.01,0) [0|10.23] "voltage:V" Vector__XXX
+
+BO_ 162 Inverter_Temperature_Set_3: 8 INV
+ SG_ INV_Torque_Shudder : 48|16@1- (0.1,0) [-3276.8|3276.7] "torque:N.m" Vector__XXX
+ SG_ INV_Motor_Temp : 32|16@1- (0.1,0) [-3276.8|3276.7] "temperature:C" Vector__XXX
+ SG_ INV_Hot_Spot_Temp : 16|16@1- (0.1,0) [-3276.8|3276.7] "temperature:C" Vector__XXX
+ SG_ INV_Coolant_Temp : 0|16@1- (0.1,0) [-3276.8|3276.7] "temperature:C" Vector__XXX
+
+BO_ 161 Inverter_Temperature_Set_2: 8 INV
+ SG_ INV_RTD2_Temperature : 32|16@1- (0.1,0) [-3276.8|3276.7] "temperature:C" Vector__XXX
+ SG_ INV_RTD1_Temperature : 16|16@1- (0.1,0) [-3276.8|3276.7] "temperature:C" Vector__XXX
+ SG_ INV_Control_Board_Temp : 0|16@1- (0.1,0) [-3276.8|3276.7] "temperature:C" Vector__XXX
+ SG_ INV_Stall_Burst_Model_Temp : 48|16@1- (0.1,0) [-3276.8|3276.7] "temperature:C" Vector__XXX
+
+BO_ 160 Inverter_Temperature_Set_1: 8 INV
+ SG_ INV_Gate_Driver_Board_Temp : 48|16@1- (0.1,0) [-3276.8|3276.7] "temperature:C" Vector__XXX
+ SG_ INV_Module_C_Temp : 32|16@1- (0.1,0) [-3276.8|3276.7] "temperature:C" Vector__XXX
+ SG_ INV_Module_B_Temp : 16|16@1- (0.1,0) [-3276.8|3276.7] "temperature:C" Vector__XXX
+ SG_ INV_Module_A_Temp : 0|16@1- (0.1,0) [-3276.8|3276.7] "temperature:C" Vector__XXX
+
+BO_ 174 Inverter_Firmware_Info: 8 INV
+ SG_ INV_Project_Code_EEP_Ver : 0|16@1+ (1,0) [0|65535] "" Vector__XXX
+ SG_ INV_SW_Version : 16|16@1+ (1,0) [0|65535] "" Vector__XXX
+ SG_ INV_DateCode_MMDD : 32|16@1+ (1,0) [0|65535] "" Vector__XXX
+ SG_ INV_DateCode_YYYY : 48|16@1+ (1,0) [0|65535] "" Vector__XXX
+
+BO_ 175 Inverter_Diag_Data_Message: 8 INV
+ SG_ INV_Diag_Record : 0|8@1+ (1,0) [0|160] "" Vector__XXX
+ SG_ INV_Diag_Segment M : 8|8@1+ (1,0) [0|5] "" Vector__XXX
+ SG_ INV_Diag_Gamma_Resolver m0 : 16|16@1- (0.1,0) [0|360] "angle:deg" Vector__XXX
+ SG_ INV_Diag_Gamma_Observer m0 : 32|16@1- (0.1,0) [0|360] "angle:deg" Vector__XXX
+ SG_ INV_Diag_Sin_Used m0 : 48|16@1- (1,0) [-5|5] "voltage:V" Vector__XXX
+ SG_ INV_Diag_Cos_Used m1 : 16|16@1- (1,0) [-5|5] "voltage:V" Vector__XXX
+ SG_ INV_Diag_Ia m1 : 32|16@1- (0.1,0) [-2000|2000] "current:A" Vector__XXX
+ SG_ INV_Diag_Ib m1 : 48|16@1- (0.1,0) [-2000|2000] "current:A" Vector__XXX
+ SG_ INV_Diag_Ic m2 : 16|16@1- (0.1,0) [-2000|2000] "current:A" Vector__XXX
+ SG_ INV_Diag_Vdc m2 : 32|16@1- (0.1,0) [0|1000] "voltage:V" Vector__XXX
+ SG_ INV_Diag_Iq_cmd m2 : 48|16@1- (0.1,0) [-2000|2000] "current:A" Vector__XXX
+ SG_ INV_Diag_Id_cmd m3 : 16|16@1- (0.1,0) [-2000|2000] "current:A" Vector__XXX
+ SG_ INV_Diag_Mod_Index m3 : 32|16@1- (0.0001,0) [0|2] "" Vector__XXX
+ SG_ INV_Diag_FW_Output m3 : 48|16@1- (0.1,0) [-2000|2000] "current:A" Vector__XXX
+ SG_ INV_Diag_Vq_Cmd m4 : 16|16@1- (0.1,0) [-1000|1000] "voltage:V" Vector__XXX
+ SG_ INV_Diag_Vd_Cmd m4 : 32|16@1- (0.1,0) [-1000|1000] "voltage:V" Vector__XXX
+ SG_ INV_Diag_Vqs_Cmd m4 : 48|16@1- (0.1,0) [-1000|1000] "voltage:V" Vector__XXX
+ SG_ INV_Diag_PWM_Freq m5 : 16|16@1+ (1,0) [0|24] "frequency:kHz" Vector__XXX
+ SG_ INV_Diag_Run_Faults_Lo m5 : 32|16@1+ (1,0) [0|65535] "" Vector__XXX
+ SG_ INV_Diag_Run_Faults_Hi m5 : 48|16@1+ (1,0) [0|65535] "" Vector__XXX
+
+BO_ 514 BMS_Current_Limit: 8 BMS
+ SG_ BMS_Max_Discharge_Current : 0|16@1+ (1,0) [0|1000] "current:A" Vector__XXX
+ SG_ BMS_Max_Charge_Current : 16|16@1+ (1,0) [0|1000] "current:A" Vector__XXX
+
+BO_ 176 Inverter_Fast_Info: 8 INV
+ SG_ INV_Fast_Torque_Command : 0|16@1- (0.1,0) [-3276.8|32767.7] "torque:N.m" Vector__XXX
+ SG_ INV_Fast_Torque_Feedback : 16|16@1- (0.1,0) [-3276.8|3276.7] "torque:N.m" Vector__XXX
+ SG_ INV_Fast_Motor_Speed : 32|16@1- (1,0) [-32768|32767] "angular_speed:rpm" Vector__XXX
+ SG_ INV_Fast_DC_Bus_Voltage : 48|16@1- (0.1,0) [-3276.8|3276.7] "voltage:V" Vector__XXX
+
+BO_ 177 Inverter_Torque_Capability: 8 INV
+ SG_ INV_Torque_Capability_Motor : 0|16@1- (0.1,0) [0|3276.7] "torque:N.m" Vector__XXX
+ SG_ INV_Torque_Capability_Regen : 16|16@1- (0.1,0) [-3276.8|0] "torque:N.m" Vector__XXX
+
+BO_ 1280 VCU_Diagnostics: 8 Vector__XXX
+ SG_ Calc_Vehicle_Speed : 0|16@1- (1,0) [-32767|32768] "mph" Vector__XXX
+ SG_ Requested_Torque : 16|16@1- (1,0) [-32767|32768] "Nm" Vector__XXX
+ SG_ APPS1_as_percent : 32|8@1- (1,0) [-127|128] "%" Vector__XXX
+ SG_ APPS2_as_percent : 40|8@1- (1,0) [-127|128] "%" Vector__XXX
+ SG_ BSE_as_percent : 48|8@1- (1,0) [-128|128] "%" Vector__XXX
+ SG_ IMD_Fault : 56|1@1+ (1,0) [0|1] "Bool" Vector__XXX
+ SG_ RTD_State : 57|1@1+ (1,0) [0|1] "Bool" Vector__XXX
+ SG_ Precharge_Relay_State : 58|1@1+ (1,0) [0|1] "Bool" Vector__XXX
+ SG_ AIR_POS_Relay_State : 59|1@1+ (1,0) [0|1] "Bool" Vector__XXX
+ SG_ AIR_NEG_Relay_State : 60|1@1+ (1,0) [0|1] "Bool" Vector__XXX
+ SG_ Crosscheck_State : 61|1@1+ (1,0) [0|1] "Bool" Vector__XXX
+ SG_ APPS_Plausible : 62|1@1+ (1,0) [0|1] "Bool" Vector__XXX
+ SG_ Looking_For_RTD : 63|1@1+ (1,0) [0|1] "Bool" Vector__XXX
+
+BO_ 1264 Fusebox_State: 7 Vector__XXX
+ SG_ Fusebox_State : 0|8@1+ (1,0) [0|5] "State" Vector__XXX
+ SG_ DCDC_Voltage : 8|16@1+ (1,0) [0|65535] "mV" Vector__XXX
+ SG_ Battery_Voltage : 24|16@1+ (1,0) [0|65535] "mV" Vector__XXX
+ SG_ LVB_SOC : 40|8@1+ (1,0) [0|100] "Percent" Vector__XXX
+ SG_ DCDC_Temp : 48|8@1+ (10,0) [0|800] "C" Vector__XXX
+
+BO_ 1712 MSGID_0X6B0: 8 BMS
+ SG_ Pack_Current : 7|16@0- (0.1,0) [-32769|32767] "Amps"  Third_Party_Device
+ SG_ Pack_Summed_Voltage : 23|16@0+ (0.1,0) [0|65535] "Volts"  Third_Party_Device
+ SG_ Pack_SOC : 39|8@0+ (0.5,0) [0|255] "Percent"  Third_Party_Device
+ SG_ MultiPurpose_Input_2 : 40|1@1+ (1.0,0) [0|1] ""  Third_Party_Device
+ SG_ MultiPurpose_Input_3 : 41|1@1+ (1.0,0) [0|1] ""  Third_Party_Device
+ SG_ Blank : 42|1@1+ (1.0,0) [0|1] ""  Third_Party_Device
+ SG_ MultiPurpose_Output_2 : 43|1@1+ (1.0,0) [0|1] ""  Third_Party_Device
+ SG_ MultiPurpose_Output_3 : 44|1@1+ (1.0,0) [0|1] ""  Third_Party_Device
+ SG_ MultiPurpose_Output_4 : 45|1@1+ (1.0,0) [0|1] ""  Third_Party_Device
+ SG_ MultiPurpose_Enable : 46|1@1+ (1.0,0) [0|1] ""  Third_Party_Device
+ SG_ MultiPurpose_Output : 47|1@1+ (1.0,0) [0|1] ""  Third_Party_Device
+ SG_ Discharge_Relay : 48|1@1+ (1.0,0) [0|1] ""  Third_Party_Device
+ SG_ Charge_Relay : 49|1@1+ (1.0,0) [0|1] ""  Third_Party_Device
+ SG_ Charger_Safety : 50|1@1+ (1.0,0) [0|1] ""  Third_Party_Device
+ SG_ Error_MIL_Output : 51|1@1+ (1.0,0) [0|1] ""  Third_Party_Device
+ SG_ MultiPurpose_Input : 52|1@1+ (1.0,0) [0|1] ""  Third_Party_Device
+ SG_ Constant_1 : 53|1@1+ (1.0,0) [0|1] ""  Third_Party_Device
+ SG_ Ready_Power_Signal : 54|1@1+ (1.0,0) [0|1] ""  Third_Party_Device
+ SG_ Charge_Power_Signal : 55|1@1+ (1.0,0) [0|1] ""  Third_Party_Device
+ SG_ CRC_Checksum : 63|8@0+ (1.0,1) [0|0] ""  Third_Party_Device
+
+BO_ 1713 MSGID_0X6B1: 8 BMS
+ SG_ Pack_DCL : 7|16@0+ (1.0,0) [0|65535] "Amps"  Third_Party_Device
+ SG_ Pack_CCL : 23|8@0+ (1.0,0) [0|255] "Amps"  Third_Party_Device
+ SG_ Blank : 31|8@0+ (1.0,0) [0|0] ""  Third_Party_Device
+ SG_ High_Temperature : 39|8@0- (1,0) [0|65535] "Celsius"  Third_Party_Device
+ SG_ Low_Temperature : 47|8@0- (1,0) [0|65535] "Celsius"  Third_Party_Device
+ SG_ Blank : 55|8@0+ (1.0,0) [0|0] ""  Third_Party_Device
+ SG_ CRC_Checksum : 63|8@0+ (1.0,1721) [0|0] ""  Third_Party_Device
+
+BO_ 1714 MSGID_0X6B2: 8 BMS
+ SG_ Low_Cell_Voltage : 7|16@0+ (1.0E-4,0) [0|65535] "Volts"  Third_Party_Device
+ SG_ High_Cell_Voltage : 23|16@0+ (1.0E-4,0) [0|65535] "Volts"  Third_Party_Device
+ SG_ Blank : 39|8@0+ (1.0,0) [0|0] ""  Third_Party_Device
+ SG_ Blank : 47|8@0+ (1.0,0) [0|0] ""  Third_Party_Device
+ SG_ Blank : 55|8@0+ (1.0,0) [0|0] ""  Third_Party_Device
+ SG_ CRC_Checksum : 63|8@0+ (1.0,0) [0|0] ""  Third_Party_Device
+
+BO_ 1281 VCU_Cooling_CMD: 4 Third_Party_Device
+ SG_ Cooling_Enable : 0|8@1+ (1,0) [0|0] "ON/OFF"  BMS
+ SG_ Tractive_Fan_PWM_Duty : 8|8@1+ (1,0) [0|100] "Duty Cycle"  BMS
+ SG_ Tractive_Pump_PWM_Duty : 16|8@1+ (1,0) [0|100] "Duty Cycle" Vector__XXX
+ SG_ Accy_Fan_PWM_Duty : 24|8@1+ (1,0) [0|100] "Duty Cycle" Vector__XXX
+
+BO_ 2550589428 MSGID_0X1806E7F4: 8 BMS
+ SG_ Maximum_Pack_Voltage : 7|16@0+ (0.1,0) [0|0] "Volts"  Third_Party_Device
+ SG_ Pack_CCL : 23|16@0+ (0.1,0) [0|0] "Amps"  Third_Party_Device
+ SG_ Blank : 32|1@1+ (1.0,0) [0|1] ""  Third_Party_Device
+ SG_ Blank : 33|1@1+ (1.0,0) [0|1] ""  Third_Party_Device
+ SG_ Blank : 34|1@1+ (1.0,0) [0|1] ""  Third_Party_Device
+ SG_ Blank : 35|1@1+ (1.0,0) [0|1] ""  Third_Party_Device
+ SG_ Blank : 36|1@1+ (1.0,0) [0|1] ""  Third_Party_Device
+ SG_ Blank : 37|1@1+ (1.0,0) [0|1] ""  Third_Party_Device
+ SG_ Blank : 38|1@1+ (1.0,0) [0|1] ""  Third_Party_Device
+ SG_ CHG_SFTY_RLY_Fault : 39|1@1+ (1,0) [0|1] ""  Third_Party_Device
+ SG_ Blank : 47|8@0+ (0.1,0) [0|0] ""  Third_Party_Device
+ SG_ Blank : 55|8@0+ (1.0,0) [0|0] ""  Third_Party_Device
+ SG_ Blank : 63|8@0+ (1.0,0) [0|0] ""  Third_Party_Device
+
+BO_ 2550588916 MSGID_0X1806E5F4: 8 BMS
+ SG_ Maximum_Cell_Voltage : 7|16@0+ (0.001,0) [0|0] "Volts"  Third_Party_Device
+ SG_ Pack_CCL : 23|16@0+ (0.1,0) [0|0] "Amps"  Third_Party_Device
+ SG_ MultiPurpose_Input_3 : 32|1@1+ (1,0) [0|1] ""  Third_Party_Device
+ SG_ Blank : 33|1@1+ (1.0,0) [0|1] ""  Third_Party_Device
+ SG_ Blank : 34|1@1+ (1.0,0) [0|1] ""  Third_Party_Device
+ SG_ Blank : 35|1@1+ (1.0,0) [0|1] ""  Third_Party_Device
+ SG_ Blank : 36|1@1+ (1.0,0) [0|1] ""  Third_Party_Device
+ SG_ Blank : 37|1@1+ (1.0,0) [0|1] ""  Third_Party_Device
+ SG_ Blank : 38|1@1+ (1.0,0) [0|1] ""  Third_Party_Device
+ SG_ Blank : 39|1@1+ (1.0,0) [0|1] ""  Third_Party_Device
+ SG_ Blank : 47|8@0+ (1.0,4) [0|0] ""  Third_Party_Device
+ SG_ Blank : 55|8@0+ (1.0,0) [0|0] ""  Third_Party_Device
+ SG_ Blank : 63|8@0+ (1.0,0) [0|0] ""  Third_Party_Device
+
+BO_ 2550589940 MSGID_0X1806E9F4: 8 BMS
+ SG_ Maximum_Cell_Voltage : 7|16@0+ (0.001,0) [0|0] "Volts"  Third_Party_Device
+ SG_ Pack_CCL : 23|16@0+ (0.1,0) [0|0] "Amps"  Third_Party_Device
+ SG_ Blank : 32|1@1+ (1.0,0) [0|1] ""  Third_Party_Device
+ SG_ Blank : 33|1@1+ (1.0,0) [0|1] ""  Third_Party_Device
+ SG_ Blank : 34|1@1+ (1.0,0) [0|1] ""  Third_Party_Device
+ SG_ Blank : 35|1@1+ (1.0,0) [0|1] ""  Third_Party_Device
+ SG_ Blank : 36|1@1+ (1.0,0) [0|1] ""  Third_Party_Device
+ SG_ Blank : 37|1@1+ (1.0,0) [0|1] ""  Third_Party_Device
+ SG_ Blank : 38|1@1+ (1.0,0) [0|1] ""  Third_Party_Device
+ SG_ DTC_P0A08_CHG_SFTY_RLY__Fault : 39|1@1+ (1,0) [0|1] ""  Third_Party_Device
+ SG_ Blank : 47|8@0+ (1.0,0) [0|0] ""  Third_Party_Device
+ SG_ Blank : 55|8@0+ (1.0,0) [0|0] ""  Third_Party_Device
+ SG_ Blank : 63|8@0+ (1.0,0) [0|0] ""  Third_Party_Device
+
+BO_ 2566869221 MSGID_0X18FF50E5: 8 Third_Party_Device
+ SG_ Blank : 7|8@0+ (1.0,0) [0|0] ""  BMS
+ SG_ Blank : 15|8@0+ (1.0,0) [0|0] ""  BMS
+ SG_ Blank : 23|8@0+ (1.0,0) [0|0] ""  BMS
+ SG_ Blank : 31|8@0+ (1.0,0) [0|0] ""  BMS
+ SG_ Blank : 39|8@0+ (1.0,0) [0|0] ""  BMS
+ SG_ Blank : 47|8@0+ (1.0,0) [0|0] ""  BMS
+ SG_ Blank : 55|8@0+ (1.0,0) [0|0] ""  BMS
+ SG_ Blank : 63|8@0+ (1.0,0) [0|0] ""  BMS
+
+BO_ 2553934720 TEMPS1_ADDRESS_CLAIM: 8 Vector__XXX
+ SG_ Module_Number : 0|8@1+ (1,0) [0|5] "" Vector__XXX
+ SG_ Lowest_Temp : 8|8@1+ (1,0) [0|200] "C" Vector__XXX
+ SG_ Highest_Temp : 16|8@1+ (1,0) [0|200] "C" Vector__XXX
+ SG_ Average_Temp : 24|8@1+ (1,0) [0|200] "C" Vector__XXX
+ SG_ Thermistors_enabled : 32|8@1+ (1,0) [0|200] "" Vector__XXX
+ SG_ Highest_thermistor_ID : 40|8@1+ (1,0) [0|200] "C" Vector__XXX
+ SG_ Lowest_thermistor_ID : 48|8@1+ (1,0) [0|200] "C" Vector__XXX
+ SG_ Checksum : 56|8@1+ (1,0) [0|200] "" Vector__XXX
+
+BO_ 2553934721 TEMPS2_DATA: 8 Vector__XXX
+ SG_ Module_Number : 0|8@1+ (1,0) [0|5] "" Vector__XXX
+ SG_ Lowest_Temp : 8|8@1+ (1,0) [0|200] "C" Vector__XXX
+ SG_ Highest_Temp : 16|8@1+ (1,0) [0|200] "C" Vector__XXX
+ SG_ Average_Temp : 24|8@1+ (1,0) [0|200] "C" Vector__XXX
+ SG_ Thermistors_enabled : 32|8@1+ (1,0) [0|200] "" Vector__XXX
+ SG_ Highest_thermistor_ID : 40|8@1+ (1,0) [0|200] "C" Vector__XXX
+ SG_ Lowest_thermistor_ID : 48|8@1+ (1,0) [0|200] "C" Vector__XXX
+ SG_ Checksum : 56|8@1+ (1,0) [0|200] "" Vector__XXX
+
+BO_ 2553934722 TEMPS3_DATA: 8 Vector__XXX
+ SG_ Module_Number : 0|8@1+ (1,0) [0|5] "" Vector__XXX
+ SG_ Lowest_Temp : 8|8@1+ (1,0) [0|200] "C" Vector__XXX
+ SG_ Highest_Temp : 16|8@1+ (1,0) [0|200] "C" Vector__XXX
+ SG_ Average_Temp : 24|8@1+ (1,0) [0|200] "C" Vector__XXX
+ SG_ Thermistors_enabled : 32|8@1+ (1,0) [0|200] "" Vector__XXX
+ SG_ Highest_thermistor_ID : 40|8@1+ (1,0) [0|200] "C" Vector__XXX
+ SG_ Lowest_thermistor_ID : 48|8@1+ (1,0) [0|200] "C" Vector__XXX
+ SG_ Checksum : 56|8@1+ (1,0) [0|200] "" Vector__XXX
+
+BO_ 2553934723 TEMPS4_DATA: 8 Vector__XXX
+ SG_ Module_Number : 0|8@1+ (1,0) [0|5] "" Vector__XXX
+ SG_ Lowest_Temp : 8|8@1+ (1,0) [0|200] "C" Vector__XXX
+ SG_ Highest_Temp : 16|8@1+ (1,0) [0|200] "C" Vector__XXX
+ SG_ Average_Temp : 24|8@1+ (1,0) [0|200] "C" Vector__XXX
+ SG_ Thermistors_enabled : 32|8@1+ (1,0) [0|200] "" Vector__XXX
+ SG_ Highest_thermistor_ID : 40|8@1+ (1,0) [0|200] "C" Vector__XXX
+ SG_ Lowest_thermistor_ID : 48|8@1+ (1,0) [0|200] "C" Vector__XXX
+ SG_ Checksum : 56|8@1+ (1,0) [0|200] "" Vector__XXX
+
+BO_ 2553934724 TEMPS5_DATA: 8 Vector__XXX
+ SG_ Module_Number : 0|8@1+ (1,0) [0|5] "" Vector__XXX
+ SG_ Lowest_Temp : 8|8@1+ (1,0) [0|200] "C" Vector__XXX
+ SG_ Highest_Temp : 16|8@1+ (1,0) [0|200] "C" Vector__XXX
+ SG_ Average_Temp : 24|8@1+ (1,0) [0|200] "C" Vector__XXX
+ SG_ Thermistors_enabled : 32|8@1+ (1,0) [0|200] "" Vector__XXX
+ SG_ Highest_thermistor_ID : 40|8@1+ (1,0) [0|200] "C" Vector__XXX
+ SG_ Lowest_thermistor_ID : 48|8@1+ (1,0) [0|200] "C" Vector__XXX
+ SG_ Checksum : 56|8@1+ (1,0) [0|200] "" Vector__XXX
+
+BO_ 1715 CustomBMS_DiagInfo: 8 Vector__XXX
+ SG_ Precharge_Complete : 0|1@1+ (1,0) [0|1] "" Vector__XXX
+
+BO_ 1265 Fusebox_Power_Draw: 8 Vector__XXX
+ SG_ Accy_Fan_Power : 0|16@1+ (100,0) [0|65535] "W" Vector__XXX
+ SG_ Tractive_Fan_Power : 16|16@1+ (100,0) [0|65535] "W" Vector__XXX
+ SG_ Tractive_Pumps_Power : 32|16@1+ (100,0) [0|65535] "W" Vector__XXX
+ SG_ Charging_Power : 48|16@1+ (100,0) [0|65535] "W" Vector__XXX
+
+BO_ 1282 VCU_Prechcarge_CMD: 2 Vector__XXX
+ SG_ Precharge_CMD : 0|8@1+ (1,0) [0|1] "BOOL" Vector__XXX
+
+BO_ 1266 Fusebox_Secondary_Diag: 8 Vector__XXX
+ SG_ Ambient_Temp : 0|8@1+ (1,0) [0|256] "C" Vector__XXX
