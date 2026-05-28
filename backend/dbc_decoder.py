@@ -5,19 +5,53 @@ import cantools
 DBC_PATH = os.path.join(os.path.dirname(__file__), "bfr_can.dbc")
 db = cantools.database.load_file(DBC_PATH, strict=False)
 
-# PATCH: The Orion BMS is physically transmitting Little Endian on the CAN bus,
-# but the DBC file incorrectly specifies Big Endian (@0). This causes all values
-# to be byte-swapped (e.g., 166.5V becomes 3303V). We dynamically patch the DBC
-# objects in memory to correctly parse Little Endian.
-for msg in db.messages:
-    if msg.senders and 'BMS' in msg.senders:
-        for sig in msg.signals:
-            if sig.byte_order == 'big_endian':
-                sig.byte_order = 'little_endian'
-                if sig.length == 16:
-                    sig.start = sig.start - 7
-                elif sig.length == 8:
-                    sig.start = sig.start - 7
+# PATCH: The Bruin Racing mk11-bms-mcu uses a completely custom layout for 
+# IDs 1712, 1713, and 1714. The old Orion DBC file is entirely invalid for this car.
+# We completely override these messages with the MK11 C-struct layouts.
+import cantools.database.can.signal as can_signal
+import cantools.database.can.message as can_message
+
+import cantools.database.conversion as can_conv
+
+# Create conversion objects
+conv_0_01 = can_conv.LinearConversion.factory(scale=0.01, offset=0, is_float=False)
+conv_1 = can_conv.LinearConversion.factory(scale=1, offset=0, is_float=False)
+
+# 1712: VOLTAGE_DF
+msg_1712 = can_message.Message(frame_id=1712, name='BMS_Voltages', length=8, signals=[
+    can_signal.Signal('Avg_Cell_Voltage', 0, 16, byte_order='little_endian', is_signed=False, conversion=conv_0_01, unit='V'),
+    can_signal.Signal('Low_Cell_Voltage', 16, 16, byte_order='little_endian', is_signed=False, conversion=conv_0_01, unit='V'),
+    can_signal.Signal('High_Cell_Voltage', 32, 16, byte_order='little_endian', is_signed=False, conversion=conv_0_01, unit='V'),
+    can_signal.Signal('num_valid_voltages', 48, 8, byte_order='little_endian', is_signed=False, conversion=conv_1)
+])
+
+# 1713: TEMP_DF
+msg_1713 = can_message.Message(frame_id=1713, name='BMS_Temperatures', length=8, signals=[
+    can_signal.Signal('Avg_Temperature', 0, 16, byte_order='little_endian', is_signed=True, conversion=conv_0_01, unit='C'),
+    can_signal.Signal('High_Temperature', 16, 16, byte_order='little_endian', is_signed=True, conversion=conv_0_01, unit='C'),
+    can_signal.Signal('Low_Temperature', 32, 16, byte_order='little_endian', is_signed=True, conversion=conv_0_01, unit='C'),
+    can_signal.Signal('num_valid_temps', 48, 8, byte_order='little_endian', is_signed=False, conversion=conv_1)
+])
+
+# 1714: SOC_CURR_PACK_DF
+msg_1714 = can_message.Message(frame_id=1714, name='BMS_Soc_Curr_Pack', length=8, signals=[
+    can_signal.Signal('Pack_SOC', 0, 16, byte_order='little_endian', is_signed=False, conversion=conv_0_01, unit='%'),
+    can_signal.Signal('Pack_Current', 16, 16, byte_order='little_endian', is_signed=True, conversion=conv_0_01, unit='A'),
+    can_signal.Signal('Pack_Summed_Voltage', 32, 16, byte_order='little_endian', is_signed=False, conversion=conv_0_01, unit='V')
+])
+
+# Apply overrides
+for i in range(len(db.messages)):
+    if db.messages[i].frame_id == 1712:
+        db.messages[i] = msg_1712
+    elif db.messages[i].frame_id == 1713:
+        db.messages[i] = msg_1713
+    elif db.messages[i].frame_id == 1714:
+        db.messages[i] = msg_1714
+
+db._frame_id_to_message[1712] = msg_1712
+db._frame_id_to_message[1713] = msg_1713
+db._frame_id_to_message[1714] = msg_1714
 
 def decode_can_frame(can_id: int, data: bytes):
     try:
