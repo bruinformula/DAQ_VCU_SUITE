@@ -562,6 +562,7 @@ async def loop_csv_logger():
     current_csv = None
     writer = None
     log_dir = os.environ.get('LOG_DIR', './logs')
+    flush_counter = 0
 
     while True:
         STATE.timestamp = time.time()
@@ -600,6 +601,11 @@ async def loop_csv_logger():
 
         elif is_logging and was_logging and writer:
             writer.writerow(STATE.to_csv_row())
+            flush_counter += 1
+            if flush_counter >= 50: # Flush to physical USB drive every 1 second
+                current_csv.flush()
+                os.fsync(current_csv.fileno())
+                flush_counter = 0
 
         elif not is_logging and was_logging:
             print("[LOGGER] Stopped. File saved.")

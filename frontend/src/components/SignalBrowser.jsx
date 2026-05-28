@@ -22,9 +22,23 @@ export default function SignalBrowser({ telemetryRef, selectedSignals, onToggleS
           if (val === undefined) {
             element.innerText = '--';
           } else {
+            // Find signal def to check for custom precision
+            let def = null;
+            for (const group of signalGroups) {
+              def = group.signals.find(s => s.id === id);
+              if (def) break;
+            }
+            
             // Simple number formatting
-            element.innerText = typeof val === 'number' ? 
-              (Math.abs(val) >= 100 ? val.toFixed(0) : val.toFixed(1)) : val;
+            if (typeof val === 'number') {
+              if (def && def.precision !== undefined) {
+                element.innerText = val.toFixed(def.precision);
+              } else {
+                element.innerText = Math.abs(val) >= 100 ? val.toFixed(0) : val.toFixed(1);
+              }
+            } else {
+              element.innerText = val;
+            }
           }
         });
       }

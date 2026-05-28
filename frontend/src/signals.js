@@ -7,8 +7,8 @@ export const signalGroups = [
       { id: 'bms.soc', name: 'State of Charge', unit: '%', color: '#00e5ff' },
       { id: 'bms.hi_t', name: 'High Temp', unit: '°C', color: '#ffb800' },
       { id: 'bms.lo_t', name: 'Low Temp', unit: '°C', color: '#00ffff' },
-      { id: 'bms.hi_cv', name: 'High Cell Voltage', unit: 'V', color: '#00ff7f' },
-      { id: 'bms.lo_cv', name: 'Low Cell Voltage', unit: 'V', color: '#ffb800' },
+      { id: 'bms.hi_cv', name: 'High Cell Voltage', unit: 'V', color: '#00ff7f', precision: 3 },
+      { id: 'bms.lo_cv', name: 'Low Cell Voltage', unit: 'V', color: '#ffb800', precision: 3 },
       { id: 'bms.dcl', name: 'Discharge Current Limit', unit: 'A', color: '#aaaaaa' }
     ]
   },
