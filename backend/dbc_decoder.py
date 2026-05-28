@@ -5,6 +5,20 @@ import cantools
 DBC_PATH = os.path.join(os.path.dirname(__file__), "bfr_can.dbc")
 db = cantools.database.load_file(DBC_PATH, strict=False)
 
+# PATCH: The Orion BMS is physically transmitting Little Endian on the CAN bus,
+# but the DBC file incorrectly specifies Big Endian (@0). This causes all values
+# to be byte-swapped (e.g., 166.5V becomes 3303V). We dynamically patch the DBC
+# objects in memory to correctly parse Little Endian.
+for msg in db.messages:
+    if msg.senders and 'BMS' in msg.senders:
+        for sig in msg.signals:
+            if sig.byte_order == 'big_endian':
+                sig.byte_order = 'little_endian'
+                if sig.length == 16:
+                    sig.start = sig.start - 7
+                elif sig.length == 8:
+                    sig.start = sig.start - 7
+
 def decode_can_frame(can_id: int, data: bytes):
     try:
         msg = db.get_message_by_frame_id(can_id)
