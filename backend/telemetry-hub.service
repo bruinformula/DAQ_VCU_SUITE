@@ -3,10 +3,10 @@ Description=Bruin Racing "Pit Sync" Telemetry Hub
 After=network.target
 
 [Service]
-# We assume the Pi's default user is 'pi', but this can be adjusted.
-User=pi
-WorkingDirectory=/home/pi/DAQ_VCU_SUITE/backend
-Environment="LOG_DIR=/home/pi/telemetry_logs"
+# We assume the Pi's default user is 'daqpi', but this can be adjusted.
+User=daqpi
+WorkingDirectory=/home/daqpi/DAQ_VCU_SUITE/backend
+Environment="LOG_DIR=/home/daqpi/telemetry_logs"
 Environment="SERIAL_BAUD=115200"
 
 # Execute the FastAPI server on 0.0.0.0 to listen on all interfaces (USB and Wi-Fi)
