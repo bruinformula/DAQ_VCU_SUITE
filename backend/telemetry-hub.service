@@ -1,0 +1,20 @@
+[Unit]
+Description=Bruin Racing "Pit Sync" Telemetry Hub
+After=network.target
+
+[Service]
+# We assume the Pi's default user is 'pi', but this can be adjusted.
+User=pi
+WorkingDirectory=/home/pi/telemetry_project/backend
+# Execute the FastAPI server on 0.0.0.0 to listen on all interfaces (USB and Wi-Fi)
+ExecStart=/usr/bin/python3 -m uvicorn backend_engine:app --host 0.0.0.0 --port 8000
+
+# Automatically restart if the process crashes
+Restart=always
+RestartSec=3
+
+# Set higher priority for telemetry processing
+Nice=-10
+
+[Install]
+WantedBy=multi-user.target
