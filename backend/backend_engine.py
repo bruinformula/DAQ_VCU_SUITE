@@ -726,14 +726,20 @@ async def websocket_endpoint(websocket: WebSocket):
     print(f"[NETWORK] Client connected. Active: {len(active_connections)}")
     try:
         while True:
-            data = await websocket.receive_json()
-
-            if data.get("action") == "START_LOG":
-                STATE.is_logging = True
-                print("[NETWORK] START_LOG command received.")
-            elif data.get("action") == "STOP_LOG":
-                STATE.is_logging = False
-                print("[NETWORK] STOP_LOG command received.")
+            try:
+                data = await websocket.receive_json()
+                if data.get("action") == "START_LOG":
+                    STATE.is_logging = True
+                    print("[NETWORK] START_LOG command received.")
+                elif data.get("action") == "STOP_LOG":
+                    STATE.is_logging = False
+                    print("[NETWORK] STOP_LOG command received.")
+            except WebSocketDisconnect:
+                raise
+            except Exception as e:
+                print(f"[NETWORK] Error receiving command: {e}")
+                # Don't crash the loop, just ignore the bad frame
+                await asyncio.sleep(0.1)
 
     except WebSocketDisconnect:
         print("[NETWORK] Client disconnected.")
