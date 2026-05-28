@@ -255,28 +255,28 @@ def build_bfr_database() -> dict[int, Message]:
 
     # ---- BMS (Orion BMS 2) ----
 
-    # 0x6B0 (1712) — Pack summary (8ms cycle, Motorola byte order!)
+    # 0x6B0 (1712) — Pack summary (8ms cycle, Little Endian on the wire!)
     db[1712] = Message(1712, 'BMS_Pack_Summary', 8, 'BMS', cycle_time_ms=8, signals=[
-        Signal('Pack_Current',        7, 16, False, True,  0.1, 0, 'A'),
-        Signal('Pack_Summed_Voltage', 23, 16, False, False, 0.1, 0, 'V'),
-        Signal('Pack_SOC',            39, 8,  False, False, 0.5, 0, '%'),
+        Signal('Pack_Current',        0, 16, True, True,  0.1, 0, 'A'),
+        Signal('Pack_Summed_Voltage', 16, 16, True, False, 0.1, 0, 'V'),
+        Signal('Pack_SOC',            32, 8,  True, False, 0.5, 0, '%'),
         Signal('Discharge_Relay',     48, 1,  True,  False, 1, 0, ''),
         Signal('Charge_Relay',        49, 1,  True,  False, 1, 0, ''),
         Signal('Ready_Power_Signal',  54, 1,  True,  False, 1, 0, ''),
     ])
 
-    # 0x6B1 (1713) — Pack limits & temps (104ms cycle, Motorola)
+    # 0x6B1 (1713) — Pack limits & temps (104ms cycle, Little Endian)
     db[1713] = Message(1713, 'BMS_Pack_Limits', 8, 'BMS', cycle_time_ms=104, signals=[
-        Signal('Pack_DCL',          7, 16, False, False, 1.0, 0, 'A'),
-        Signal('Pack_CCL',         23,  8, False, False, 1.0, 0, 'A'),
-        Signal('High_Temperature', 39,  8, False, True,  1, 0, '°C'),
-        Signal('Low_Temperature',  47,  8, False, True,  1, 0, '°C'),
+        Signal('Pack_DCL',          0, 16, True, False, 1.0, 0, 'A'),
+        Signal('Pack_CCL',         16,  8, True, False, 1.0, 0, 'A'),
+        Signal('High_Temperature', 32,  8, True, True,  1, 0, '°C'),
+        Signal('Low_Temperature',  40,  8, True, True,  1, 0, '°C'),
     ])
 
-    # 0x6B2 (1714) — Cell voltages (8ms cycle, Motorola)
+    # 0x6B2 (1714) — Cell voltages (8ms cycle, Little Endian)
     db[1714] = Message(1714, 'BMS_Cell_Voltages', 8, 'BMS', cycle_time_ms=8, signals=[
-        Signal('Low_Cell_Voltage',  7, 16, False, False, 0.0001, 0, 'V'),
-        Signal('High_Cell_Voltage', 23, 16, False, False, 0.0001, 0, 'V'),
+        Signal('Low_Cell_Voltage',  0, 16, True, False, 0.0001, 0, 'V'),
+        Signal('High_Cell_Voltage', 16, 16, True, False, 0.0001, 0, 'V'),
     ])
 
     # 0x202 (514) - BMS Current Limit
