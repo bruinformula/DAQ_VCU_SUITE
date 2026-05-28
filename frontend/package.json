@@ -14,8 +14,8 @@
     "electron:build": "npm run build && electron-builder"
   },
   "build": {
-    "appId": "com.bruinracing.telemetry",
-    "productName": "Bruin Racing Telemetry",
+    "appId": "com.bruinformularacing.telemetry",
+    "productName": "Bruin Formula Racing Telemetry",
     "directories": {
       "output": "dist-electron"
     },
@@ -34,6 +34,7 @@
     "maplibre-gl": "^5.24.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
+    "serialport": "^13.0.0",
     "uplot": "^1.6.32"
   },
   "devDependencies": {

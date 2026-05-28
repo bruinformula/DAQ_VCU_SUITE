@@ -155,7 +155,10 @@ class TelemetryState:
         elif can_id == 165:
             self.inv_motor_speed = signals.get('INV_Motor_Speed', self.inv_motor_speed)
         elif can_id == 166:
-            self.inv_dc_bus_current = signals.get('INV_DC_Bus_Current', self.inv_dc_bus_current)
+            phase_a = abs(signals.get('INV_Phase_A_Current', 0.0))
+            phase_b = abs(signals.get('INV_Phase_B_Current', 0.0))
+            phase_c = abs(signals.get('INV_Phase_C_Current', 0.0))
+            self.inv_dc_bus_current = max(phase_a, phase_b, phase_c, signals.get('INV_DC_Bus_Current', self.inv_dc_bus_current))
         elif can_id == 167:
             self.inv_dc_bus_voltage = signals.get('INV_DC_Bus_Voltage', self.inv_dc_bus_voltage)
         elif can_id == 170:
@@ -391,6 +394,61 @@ async def loop_mdu_serial():
             await asyncio.sleep(2)
 
 
+# ---------------------------------------------------------------------------
+# LOOP A2: Direct SocketCAN Reader (For PiCAN / Native Linux CAN)
+# ---------------------------------------------------------------------------
+
+async def loop_socketcan():
+    """Read CAN frames directly from a Linux SocketCAN interface."""
+    import sys
+    if sys.platform != 'linux':
+        print("[SYSTEM] SocketCAN is only supported on Linux. Skipping SocketCAN loop.")
+        return
+
+    import socket
+    import struct
+    
+    interface = os.environ.get('CAN_INTERFACE', 'can0')
+    print(f"[SYSTEM] SocketCAN Loop Started on {interface}.")
+    
+    try:
+        # AF_CAN = 29, SOCK_RAW = 3, CAN_RAW = 1
+        s = socket.socket(socket.AF_CAN, socket.SOCK_RAW, socket.CAN_RAW)
+        s.bind((interface,))
+        s.setblocking(False)
+    except Exception as e:
+        print(f"[SOCKETCAN] Cannot bind {interface} (make sure the interface is up): {e}")
+        return
+
+    loop = asyncio.get_running_loop()
+    
+    while True:
+        try:
+            # Standard Linux CAN frame is 16 bytes: can_id (4), can_dlc (1), pad (3), data (8)
+            frame = await loop.sock_recv(s, 16)
+            if len(frame) == 16:
+                can_id, can_dlc, _, raw_data = struct.unpack("<IB3s8s", frame)
+                
+                is_extended = bool(can_id & 0x80000000)
+                actual_id = can_id & 0x1FFFFFFF if is_extended else can_id & 0x7FF
+                
+                can_dlc = min(can_dlc, 8)
+                data = raw_data[:can_dlc]
+                
+                # SocketCAN frames from VCU/BMS/Inverter are standard DBC encoded
+                signals = decode_can_frame(actual_id, data)
+                if signals is not None:
+                    STATE.apply_dbc_signals(actual_id, signals)
+                    STATE.frames_parsed += 1
+                
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            print(f"[SOCKETCAN] Read error: {e}")
+            await asyncio.sleep(1)
+
+
+
 def _process_frame(frame: SlcanFrame) -> None:
     """Route a parsed SLCAN frame to the correct decoder."""
     data = bytes(frame.data_bytes)
@@ -486,6 +544,19 @@ async def loop_mock_generator():
 # LOOP C: CSV Logger with Rolling Buffer
 # ---------------------------------------------------------------------------
 
+def find_usb_drive() -> Optional[str]:
+    """Find a mounted USB drive to save logs to."""
+    for base in ['/media/daqpi', '/media/pi', '/media', '/Volumes']:
+        if os.path.exists(base):
+            for item in os.listdir(base):
+                path = os.path.join(base, item)
+                if os.path.ismount(path) and os.access(path, os.W_OK):
+                    # Ignore Mac internal volumes
+                    if item in ['Macintosh HD', 'Recovery']:
+                        continue
+                    return path
+    return None
+
 async def loop_csv_logger():
     """30-second rolling buffer with trigger-based file writes."""
     print("[SYSTEM] CSV Logger Loop Started.")
@@ -504,8 +575,16 @@ async def loop_csv_logger():
 
         if is_logging and not was_logging:
             # TRIGGERED — flush 30s buffer to new file
-            os.makedirs(log_dir, exist_ok=True)
-            filename = os.path.join(log_dir, f'bfr_log_{int(STATE.timestamp)}.csv')
+            usb_dir = find_usb_drive()
+            if usb_dir:
+                active_log_dir = usb_dir
+                print(f"[LOGGER] Found USB Drive: {usb_dir}")
+            else:
+                active_log_dir = log_dir
+
+            os.makedirs(active_log_dir, exist_ok=True)
+            time_str = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime(STATE.timestamp))
+            filename = os.path.join(active_log_dir, f'BFR_{time_str}.csv')
             print(f"\n[LOGGER] TRIGGERED! Flushing buffer to {filename}")
 
             try:
@@ -559,6 +638,43 @@ async def loop_ws_broadcaster():
 
 
 # ---------------------------------------------------------------------------
+# LOOP E: Direct Serial UART Broadcaster (Fallback)
+# ---------------------------------------------------------------------------
+
+async def loop_serial_broadcaster():
+    """Push 50Hz JSON string directly out of a secondary serial port."""
+    out_serial = os.environ.get('OUT_SERIAL_PORT')
+    if not out_serial:
+        print("[SYSTEM] No OUT_SERIAL_PORT specified. Serial Broadcaster disabled.")
+        return
+
+    out_baud = int(os.environ.get('OUT_SERIAL_BAUD', '115200'))
+    print(f"[SYSTEM] Serial Broadcaster Loop Started. Targeting {out_serial} @ {out_baud}")
+
+    try:
+        import serial_asyncio
+    except ImportError:
+        print("[SYSTEM] serial_asyncio not available. Skipping serial broadcast.")
+        return
+
+    while True:
+        try:
+            reader, writer = await serial_asyncio.open_serial_connection(
+                url=out_serial, baudrate=out_baud
+            )
+            print(f"[SERIAL OUT] Connected to {out_serial}")
+
+            while True:
+                payload = json.dumps(STATE.to_broadcast_dict()) + "\n"
+                writer.write(payload.encode('utf-8'))
+                await writer.drain()
+                await asyncio.sleep(0.02)  # 50Hz
+        except Exception as e:
+            print(f"[SERIAL OUT] Connection error: {e}. Retrying in 2s...")
+            await asyncio.sleep(2)
+
+
+# ---------------------------------------------------------------------------
 # FastAPI Application
 # ---------------------------------------------------------------------------
 
@@ -577,9 +693,11 @@ async def lifespan(app: FastAPI):
         asyncio.create_task(loop_mock_generator())
     else:
         asyncio.create_task(loop_mdu_serial())
+        asyncio.create_task(loop_socketcan())
 
     asyncio.create_task(loop_csv_logger())
     asyncio.create_task(loop_ws_broadcaster())
+    asyncio.create_task(loop_serial_broadcaster())
 
     print(f"[SYSTEM] All loops started. Mock={MOCK_MODE}")
     yield

@@ -1,17 +1,12 @@
-import { useState, useEffect, useRef } from 'react';
-
-// Using the default WebSocket port we configured in FastAPI (8000)
-const WS_URL = 'ws://localhost:8000/ws';
+import { useState, useEffect, useRef, useCallback } from 'react';
 
 export function useTelemetry() {
   const [isConnected, setIsConnected] = useState(false);
   const [isLogging, setIsLogging] = useState(false);
   const wsRef = useRef(null);
+  const reconnectTimerRef = useRef(null);
+  const targetIpRef = useRef(null);
 
-  // Instead of updating React state at 50Hz (which kills performance),
-  // we keep the latest telemetry frame in a highly accessible ref object.
-  // The React components will read from this ref using requestAnimationFrame,
-  // or pass this ref directly to uPlot for native rendering.
   const telemetryRef = useRef({
     ts: 0,
     gps: { lat: 0, lon: 0, alt: 0, vel: 0, hdg: 0, fix: 0, sats: 0 },
@@ -29,55 +24,108 @@ export function useTelemetry() {
     stats: { parsed: 0, errors: 0 }
   });
 
+  const disconnect = useCallback(() => {
+    targetIpRef.current = null;
+    clearTimeout(reconnectTimerRef.current);
+    if (wsRef.current) {
+      wsRef.current.close();
+    }
+    if (window.electronAPI) {
+      window.electronAPI.disconnectSerial();
+      setIsConnected(false);
+    }
+  }, []);
+
+  const connect = useCallback((ip) => {
+    if (wsRef.current) {
+      wsRef.current.close();
+    }
+    
+    targetIpRef.current = ip;
+    const wsUrl = `ws://${ip}:8000/ws`;
+    const ws = new WebSocket(wsUrl);
+
+    ws.onopen = () => {
+      setIsConnected(true);
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        telemetryRef.current = data;
+        
+        setIsLogging(prev => {
+          if (prev !== data.log) return data.log;
+          return prev;
+        });
+      } catch (err) {
+        console.error("Telemetry parsing error", err);
+      }
+    };
+
+    ws.onclose = () => {
+      setIsConnected(false);
+      setIsLogging(false);
+      // Attempt to reconnect every 2 seconds if we have a target IP
+      if (targetIpRef.current) {
+        reconnectTimerRef.current = setTimeout(() => connect(targetIpRef.current), 2000);
+      }
+    };
+
+    ws.onerror = (err) => {
+      ws.close();
+    };
+
+    wsRef.current = ws;
+  }, []);
+
+  const connectSerial = useCallback(async (portPath, baudRate = 115200) => {
+    if (!window.electronAPI) return;
+    
+    disconnect(); // Ensure WS is closed
+    
+    const result = await window.electronAPI.connectSerial(portPath, baudRate);
+    if (result.success) {
+      setIsConnected(true);
+    } else {
+      alert("Failed to connect to serial port: " + result.error);
+    }
+  }, [disconnect]);
+
   useEffect(() => {
-    let reconnectTimer;
-
-    function connect() {
-      const ws = new WebSocket(WS_URL);
-
-      ws.onopen = () => {
-        setIsConnected(true);
-      };
-
-      ws.onmessage = (event) => {
+    if (window.electronAPI) {
+      window.electronAPI.onSerialData((data) => {
         try {
-          const data = JSON.parse(event.data);
-          telemetryRef.current = data;
-          
-          // Only update React state for UI-breaking changes to prevent 50Hz re-renders
+          const parsed = JSON.parse(data);
+          telemetryRef.current = parsed;
           setIsLogging(prev => {
-            if (prev !== data.log) return data.log;
+            if (prev !== parsed.log) return parsed.log;
             return prev;
           });
         } catch (err) {
-          console.error("Telemetry parsing error", err);
+          // Ignore partial or malformed serial lines
         }
-      };
+      });
 
-      ws.onclose = () => {
+      window.electronAPI.onSerialDisconnected(() => {
         setIsConnected(false);
         setIsLogging(false);
-        // Attempt to reconnect every 2 seconds
-        reconnectTimer = setTimeout(connect, 2000);
-      };
-
-      ws.onerror = (err) => {
-        ws.close();
-      };
-
-      wsRef.current = ws;
+      });
     }
 
-    connect();
-
     return () => {
-      clearTimeout(reconnectTimer);
+      clearTimeout(reconnectTimerRef.current);
       if (wsRef.current) wsRef.current.close();
+      if (window.electronAPI) window.electronAPI.disconnectSerial();
     };
   }, []);
 
   const toggleLogging = () => {
-    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+    // Note: Serial backup cannot currently toggle logging since it is a one-way broadcast from Pi to Mac.
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+      console.warn("Cannot toggle logging over serial backup. Connect via Wi-Fi.");
+      return;
+    }
     
     const cmd = {
       action: isLogging ? "STOP_LOG" : "START_LOG"
@@ -86,5 +134,5 @@ export function useTelemetry() {
     wsRef.current.send(JSON.stringify(cmd));
   };
 
-  return { isConnected, isLogging, telemetryRef, toggleLogging };
+  return { isConnected, isLogging, telemetryRef, toggleLogging, connect, connectSerial, disconnect };
 }

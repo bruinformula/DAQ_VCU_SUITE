@@ -36,7 +36,8 @@ export default function TelemetryChart({ telemetryRef, isConnected, selectedSign
         side: idx % 2 === 0 ? 3 : 1, // Alternate sides (3=right, 1=left)
         grid: { show: idx === 0 ? true : false, stroke: "rgba(255,255,255,0.05)" },
         stroke: "rgba(255,255,255,0.5)",
-        values: (u, vals) => vals.map(v => v + unit)
+        values: (u, vals) => vals.map(v => v + unit),
+        size: 80 // Provide enough space so large numbers aren't clipped
       });
     });
 
@@ -51,8 +52,8 @@ export default function TelemetryChart({ telemetryRef, isConnected, selectedSign
     ];
 
     const opts = {
-      width: chartRef.current.clientWidth,
-      height: chartRef.current.clientHeight,
+      width: chartRef.current.clientWidth || 800,
+      height: chartRef.current.clientHeight || 400,
       title: "Powertrain Telemetry (50Hz)",
       series: seriesConfig,
       axes: axes,
@@ -62,7 +63,7 @@ export default function TelemetryChart({ telemetryRef, isConnected, selectedSign
     const u = new uPlot(opts, dataRef.current, chartRef.current);
     uplotInst.current = u;
 
-    // Handle window resize
+    // Handle container resize dynamically
     const handleResize = () => {
       if (chartRef.current && uplotInst.current) {
         uplotInst.current.setSize({
@@ -71,12 +72,16 @@ export default function TelemetryChart({ telemetryRef, isConnected, selectedSign
         });
       }
     };
-    window.addEventListener('resize', handleResize);
+    
+    const resizeObserver = new ResizeObserver(handleResize);
+    if (chartRef.current) {
+      resizeObserver.observe(chartRef.current);
+    }
 
     return () => {
       u.destroy();
       uplotInst.current = null;
-      window.removeEventListener('resize', handleResize);
+      resizeObserver.disconnect();
     };
   }, [selectedSignals]);
 
