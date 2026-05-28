@@ -399,49 +399,47 @@ async def loop_mdu_serial():
 # ---------------------------------------------------------------------------
 
 async def loop_socketcan():
-    """Read CAN frames directly from a Linux SocketCAN interface."""
+    """Read CAN frames directly from a Linux SocketCAN interface using python-can."""
     import sys
     if sys.platform != 'linux':
         print("[SYSTEM] SocketCAN is only supported on Linux. Skipping SocketCAN loop.")
         return
 
-    import socket
-    import struct
-    
-    interface = os.environ.get('CAN_INTERFACE', 'can0')
-    print(f"[SYSTEM] SocketCAN Loop Started on {interface}.")
+    try:
+        import can
+    except ImportError:
+        print("[SOCKETCAN] ERROR: python-can is not installed! Cannot read CAN bus.")
+        return
+        
+    interface = os.environ.get('CAN_INTERFACE', 'can1')
+    print(f"[SYSTEM] SocketCAN Loop Started on {interface} using python-can.")
     
     try:
-        # AF_CAN = 29, SOCK_RAW = 3, CAN_RAW = 1
-        s = socket.socket(socket.AF_CAN, socket.SOCK_RAW, socket.CAN_RAW)
-        s.bind((interface,))
-        s.setblocking(False)
+        bus = can.interface.Bus(channel=interface, interface='socketcan')
     except Exception as e:
         print(f"[SOCKETCAN] Cannot bind {interface} (make sure the interface is up): {e}")
         return
 
     loop = asyncio.get_running_loop()
     
+    # Run the blocking recv() in a background thread to avoid blocking the asyncio event loop
     while True:
         try:
-            # Standard Linux CAN frame is 16 bytes: can_id (4), can_dlc (1), pad (3), data (8)
-            frame = await loop.sock_recv(s, 16)
-            if len(frame) == 16:
-                can_id, can_dlc, _, raw_data = struct.unpack("<IB3s8s", frame)
+            msg = await loop.run_in_executor(None, bus.recv, 1.0)
+            if msg is None:
+                continue
                 
-                is_extended = bool(can_id & 0x80000000)
-                actual_id = can_id & 0x1FFFFFFF if is_extended else can_id & 0x7FF
-                
-                can_dlc = min(can_dlc, 8)
-                data = raw_data[:can_dlc]
-                
-                # SocketCAN frames from VCU/BMS/Inverter are standard DBC encoded
-                signals = decode_can_frame(actual_id, data)
-                if signals is not None:
-                    STATE.apply_dbc_signals(actual_id, signals)
-                    STATE.frames_parsed += 1
+            can_id = msg.arbitration_id
+            data = bytes(msg.data)
+            
+            # SocketCAN frames from VCU/BMS/Inverter are standard DBC encoded
+            signals = decode_can_frame(can_id, data)
+            if signals is not None:
+                STATE.apply_dbc_signals(can_id, signals)
+                STATE.frames_parsed += 1
                 
         except asyncio.CancelledError:
+            bus.shutdown()
             break
         except Exception as e:
             print(f"[SOCKETCAN] Read error: {e}")
