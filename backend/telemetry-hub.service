@@ -8,6 +8,7 @@ User=daqpi
 WorkingDirectory=/home/daqpi/DAQ_VCU_SUITE/backend
 Environment="LOG_DIR=/home/daqpi/telemetry_logs"
 Environment="SERIAL_BAUD=115200"
+Environment="CAN_INTERFACE=can1"
 
 # Execute the FastAPI server on 0.0.0.0 to listen on all interfaces (USB and Wi-Fi)
 # We use a virtual environment located at /home/daqpi/venv
