@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { signalGroups, getSignalValue } from '../signals';
+import { formatSignalValue, getSignalDefinition, getSignalValue, signalGroups } from '../signals';
 
 export default function SignalBrowser({ telemetryRef, selectedSignals, onToggleSignal }) {
-  const [expandedGroups, setExpandedGroups] = useState({'bms': true, 'inv': true, 'sdu_0': true});
+  const [expandedGroups, setExpandedGroups] = useState({ bms_core: true, inv_core: true, inv_temp: true });
   const valueRefs = useRef({});
 
   const toggleGroup = (groupId) => {
@@ -22,23 +22,8 @@ export default function SignalBrowser({ telemetryRef, selectedSignals, onToggleS
           if (val === undefined) {
             element.innerText = '--';
           } else {
-            // Find signal def to check for custom precision
-            let def = null;
-            for (const group of signalGroups) {
-              def = group.signals.find(s => s.id === id);
-              if (def) break;
-            }
-            
-            // Simple number formatting
-            if (typeof val === 'number') {
-              if (def && def.precision !== undefined) {
-                element.innerText = val.toFixed(def.precision);
-              } else {
-                element.innerText = Math.abs(val) >= 100 ? val.toFixed(0) : val.toFixed(1);
-              }
-            } else {
-              element.innerText = val;
-            }
+            const def = getSignalDefinition(id);
+            element.innerText = formatSignalValue(def, val);
           }
         });
       }
@@ -51,7 +36,10 @@ export default function SignalBrowser({ telemetryRef, selectedSignals, onToggleS
 
   return (
     <div className="signal-browser">
-      <h2>Signal Browser</h2>
+      <h2>Log Signal Selection</h2>
+      <p className="signal-browser-copy">
+        Pick the channels you want written into new CSV sessions. Live graphs are grouped automatically.
+      </p>
       <div className="signal-groups">
         {signalGroups.map(group => (
           <div key={group.id} className="signal-group">

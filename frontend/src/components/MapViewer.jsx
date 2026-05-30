@@ -1,112 +1,225 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
+
+const DEFAULT_CENTER = [-118.445, 34.068];
+const DEFAULT_ZOOM = 16;
+const FOLLOW_PITCH = 48;
+const FOLLOW_ZOOM = 17.6;
+
+const STREET_STYLE = {
+  version: 8,
+  sources: {
+    osm: {
+      type: 'raster',
+      tiles: [
+        'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+      ],
+      tileSize: 256,
+      attribution: '&copy; OpenStreetMap contributors',
+      maxzoom: 19,
+    },
+  },
+  layers: [
+    {
+      id: 'background',
+      type: 'background',
+      paint: {
+        'background-color': '#0f141a',
+      },
+    },
+    {
+      id: 'osm-tiles',
+      type: 'raster',
+      source: 'osm',
+      minzoom: 0,
+      maxzoom: 19,
+      paint: {
+        'raster-saturation': -0.15,
+        'raster-contrast': 0.08,
+        'raster-brightness-min': 0.08,
+        'raster-brightness-max': 0.96,
+      },
+    },
+  ],
+};
+
+function ensureTrailLayer(mapInstance) {
+  if (!mapInstance.getSource('trail')) {
+    mapInstance.addSource('trail', {
+      type: 'geojson',
+      data: {
+        type: 'Feature',
+        geometry: {
+          type: 'LineString',
+          coordinates: [],
+        },
+      },
+    });
+  }
+
+  if (!mapInstance.getLayer('trail-glow')) {
+    mapInstance.addLayer({
+      id: 'trail-glow',
+      type: 'line',
+      source: 'trail',
+      layout: {
+        'line-join': 'round',
+        'line-cap': 'round',
+      },
+      paint: {
+        'line-color': '#00e5ff',
+        'line-width': 10,
+        'line-opacity': 0.18,
+        'line-blur': 1.8,
+      },
+    });
+  }
+
+  if (!mapInstance.getLayer('trail-line')) {
+    mapInstance.addLayer({
+      id: 'trail-line',
+      type: 'line',
+      source: 'trail',
+      layout: {
+        'line-join': 'round',
+        'line-cap': 'round',
+      },
+      paint: {
+        'line-color': '#00e5ff',
+        'line-width': 4,
+        'line-opacity': 0.92,
+      },
+    });
+  }
+}
 
 export default function MapViewer({ telemetryRef, isConnected }) {
   const mapContainer = useRef(null);
   const map = useRef(null);
   const marker = useRef(null);
+  const followCarRef = useRef(true);
+  const trailCoordsRef = useRef([]);
+  const lastTsRef = useRef(0);
+  const userMovedMapRef = useRef(false);
+
+  const [followCar, setFollowCar] = useState(true);
+  const [gpsStatus, setGpsStatus] = useState('Waiting for GPS lock');
 
   useEffect(() => {
-    if (map.current) return; // initialize map only once
-    
-    // In the real deployment, this would point to the local FastAPI server
-    // hosting the .mbtiles or static vector pbf files.
-    // For local development, we use a default style.
-    map.current = new maplibregl.Map({
+    followCarRef.current = followCar;
+  }, [followCar]);
+
+  useEffect(() => {
+    if (map.current) return;
+
+    const mapInstance = new maplibregl.Map({
       container: mapContainer.current,
-      style: 'https://demotiles.maplibre.org/style.json',
-      center: [-118.445, 34.068], // UCLA / Bruin Racing default center
-      zoom: 16
+      style: STREET_STYLE,
+      center: DEFAULT_CENTER,
+      zoom: DEFAULT_ZOOM,
+      pitch: 34,
+      bearing: -12,
+      antialias: true,
+      attributionControl: false,
     });
 
-    map.current.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
-    
-    // Car marker
+    map.current = mapInstance;
+
+    mapInstance.addControl(new maplibregl.NavigationControl({ showCompass: true, visualizePitch: true }), 'top-right');
+    mapInstance.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
+
     const markerEl = document.createElement('div');
     markerEl.className = 'car-marker';
-    markerEl.style.backgroundColor = '#00e5ff';
-    markerEl.style.width = '14px';
-    markerEl.style.height = '14px';
-    markerEl.style.borderRadius = '50%';
-    markerEl.style.border = '2px solid #fff';
-    markerEl.style.boxShadow = '0 0 12px #00e5ff';
-    markerEl.style.transition = 'transform 0.1s linear';
+    markerEl.style.width = '18px';
+    markerEl.style.height = '18px';
+    markerEl.style.borderRadius = '999px';
+    markerEl.style.background = 'radial-gradient(circle at 35% 35%, #9ef9ff 0%, #00d5ff 55%, #006d83 100%)';
+    markerEl.style.border = '2px solid rgba(255,255,255,0.95)';
+    markerEl.style.boxShadow = '0 0 22px rgba(0, 229, 255, 0.7)';
+    markerEl.style.transition = 'transform 0.12s linear';
 
-    marker.current = new maplibregl.Marker({ element: markerEl, rotationAlignment: 'map' })
-      .setLngLat([-118.445, 34.068])
-      .addTo(map.current);
+    marker.current = new maplibregl.Marker({ element: markerEl, rotationAlignment: 'map', pitchAlignment: 'map' })
+      .setLngLat(DEFAULT_CENTER)
+      .addTo(mapInstance);
 
-    map.current.on('load', () => {
-      // Add breadcrumb trail source
-      map.current.addSource('trail', {
-        type: 'geojson',
-        data: {
-          type: 'Feature',
-          geometry: {
-            type: 'LineString',
-            coordinates: []
-          }
-        }
-      });
+    mapInstance.on('load', () => {
+      ensureTrailLayer(mapInstance);
+    });
 
-      map.current.addLayer({
-        id: 'trail-line',
-        type: 'line',
-        source: 'trail',
-        layout: {
-          'line-join': 'round',
-          'line-cap': 'round'
-        },
-        paint: {
-          'line-color': '#ff2a4d',
-          'line-width': 4,
-          'line-opacity': 0.8
-        }
-      });
+    mapInstance.on('error', (event) => {
+      console.error('Map render error', event?.error || event);
+      setGpsStatus('Street map failed to load');
+    });
+
+    mapInstance.on('dragstart', () => {
+      userMovedMapRef.current = true;
+      setFollowCar(false);
+    });
+    mapInstance.on('rotatestart', () => {
+      userMovedMapRef.current = true;
+      setFollowCar(false);
+    });
+    mapInstance.on('pitchstart', () => {
+      userMovedMapRef.current = true;
+      setFollowCar(false);
     });
 
     return () => {
-      map.current.remove();
+      mapInstance.remove();
       map.current = null;
     };
   }, []);
 
-  // Update map in a high-speed loop bypassing React
   useEffect(() => {
     let animationFrame;
-    let trailCoords = [];
-    let lastTs = 0;
 
     const updateMap = () => {
-      if (isConnected && telemetryRef.current && map.current && marker.current) {
-        const data = telemetryRef.current;
-        if (data.ts > lastTs && data.gps && data.gps.lat !== 0) {
-          lastTs = data.ts;
+      const mapInstance = map.current;
+      const markerInstance = marker.current;
+      const data = telemetryRef.current;
+
+      if (mapInstance && markerInstance && data?.gps) {
+        const hasGpsFix = Boolean(data.gps.fix) && data.gps.lat !== 0 && data.gps.lon !== 0;
+        setGpsStatus(
+          hasGpsFix
+            ? `${data.gps.sats || 0} sats • ${Math.max(0, data.gps.vel || 0).toFixed(1)} m/s`
+            : 'Waiting for GPS lock',
+        );
+
+        if (isConnected && hasGpsFix && data.ts > lastTsRef.current) {
+          lastTsRef.current = data.ts;
           const lngLat = [data.gps.lon, data.gps.lat];
-          
-          marker.current.setLngLat(lngLat);
-          marker.current.setRotation(data.gps.hdg || 0);
 
-          // Build breadcrumb trail (store up to 1000 points)
-          trailCoords.push(lngLat);
-          if (trailCoords.length > 1000) trailCoords.shift();
+          markerInstance.setLngLat(lngLat);
+          markerInstance.setRotation(data.gps.hdg || 0);
 
-          const trailSource = map.current.getSource('trail');
+          trailCoordsRef.current = [...trailCoordsRef.current.slice(-1499), lngLat];
+
+          const trailSource = mapInstance.getSource('trail');
           if (trailSource) {
             trailSource.setData({
               type: 'Feature',
               geometry: {
                 type: 'LineString',
-                coordinates: trailCoords
-              }
+                coordinates: trailCoordsRef.current,
+              },
             });
           }
-          
-          // Optionally auto-center map
-          // map.current.easeTo({ center: lngLat, duration: 200, padding: 50 });
+
+          if (followCarRef.current) {
+            mapInstance.easeTo({
+              center: lngLat,
+              bearing: data.gps.hdg || mapInstance.getBearing(),
+              pitch: FOLLOW_PITCH,
+              zoom: Math.max(mapInstance.getZoom(), FOLLOW_ZOOM),
+              duration: 260,
+              easing: (t) => 1 - ((1 - t) * (1 - t)),
+            });
+          }
         }
       }
+
       animationFrame = requestAnimationFrame(updateMap);
     };
 
@@ -114,27 +227,39 @@ export default function MapViewer({ telemetryRef, isConnected }) {
     return () => cancelAnimationFrame(animationFrame);
   }, [isConnected, telemetryRef]);
 
+  const handleRecenter = () => {
+    const mapInstance = map.current;
+    const data = telemetryRef.current;
+    if (!mapInstance || !data?.gps || !data.gps.lat || !data.gps.lon) {
+      return;
+    }
+
+    userMovedMapRef.current = false;
+    setFollowCar(true);
+    mapInstance.easeTo({
+      center: [data.gps.lon, data.gps.lat],
+      bearing: data.gps.hdg || 0,
+      pitch: FOLLOW_PITCH,
+      zoom: Math.max(mapInstance.getZoom(), FOLLOW_ZOOM),
+      duration: 450,
+    });
+  };
+
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
-      <div 
-        ref={mapContainer} 
-        style={{ position: 'absolute', inset: 0, borderRadius: '0 0 12px 0', overflow: 'hidden' }} 
-      />
-      {/* Title overlay */}
-      <div style={{
-        position: 'absolute',
-        top: '16px',
-        left: '16px',
-        background: 'rgba(20, 20, 23, 0.8)',
-        padding: '8px 16px',
-        borderRadius: '8px',
-        color: '#fff',
-        fontFamily: 'monospace',
-        zIndex: 1,
-        backdropFilter: 'blur(4px)',
-        border: '1px solid rgba(255,255,255,0.1)'
-      }}>
-        LIVE GPS TRACKING
+    <div className="track-map-shell">
+      <div ref={mapContainer} className="track-map-canvas" />
+
+      <div className="track-map-overlay track-map-title">
+        <div className="track-map-kicker">Track Map</div>
+        <div className="track-map-subtitle">Street basemap with tilt, rotate, breadcrumb trail, and live vehicle heading.</div>
+      </div>
+
+      <div className="track-map-overlay track-map-status">
+        <div className={`track-map-pill ${isConnected ? 'is-live' : ''}`}>{isConnected ? 'LIVE LINK' : 'LINK DOWN'}</div>
+        <div className="track-map-pill is-soft">{gpsStatus}</div>
+        <button className="track-map-action" onClick={handleRecenter}>
+          Follow Car
+        </button>
       </div>
     </div>
   );
