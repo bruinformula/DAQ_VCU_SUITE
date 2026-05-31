@@ -88,6 +88,16 @@ class TelemetryState:
         self.imu_yaw: float = 0.0
         self.imu_cal: int = 0
 
+        # Triple IMU state (0 = COG, 1 = Front, 2 = Rear)
+        self.imus = [
+            {
+                'ax': 0.0, 'ay': 0.0, 'az': 0.0,
+                'pitch': 0.0, 'roll': 0.0, 'yaw': 0.0,
+                'cal': 0
+            }
+            for _ in range(3)
+        ]
+
         # Inverter (CAN 0xA0-0xB1)
         self.inv_motor_speed: float = 0.0
         self.inv_motor_temp: float = 0.0
@@ -295,6 +305,57 @@ class TelemetryState:
         elif can_id == 1266:
             self.fusebox_ambient_temp = signals.get('Ambient_Temp', self.fusebox_ambient_temp)
 
+    def apply_imu_raw_frame(self, can_id: int, data: bytes) -> None:
+        """Decode IMU frames directly using struct unpack."""
+        import struct
+        if len(data) < 6:
+            return
+
+        try:
+            # Map CAN ID to board index and frame type
+            # 0x4F5 = Board 0 Accel, 0x4F6 = Board 0 Att
+            # 0x4F7 = Board 1 Accel, 0x4F8 = Board 1 Att
+            # 0x4F9 = Board 2 Accel, 0x4FA = Board 2 Att
+            board_idx = (can_id - 0x4F5) // 2
+            is_accel = (can_id - 0x4F5) % 2 == 0
+
+            if not (0 <= board_idx < 3):
+                return
+
+            imu = self.imus[board_idx]
+
+            if is_accel:
+                # Accel X, Y, Z as signed 16-bit little endian
+                x_mg, y_mg, z_mg = struct.unpack('<hhh', data[0:6])
+                imu['ax'] = round(x_mg / 1000.0, 3)
+                imu['ay'] = round(y_mg / 1000.0, 3)
+                imu['az'] = round(z_mg / 1000.0, 3)
+                if len(data) >= 7:
+                    imu['cal'] = int(data[6])
+                else:
+                    imu['cal'] = 0
+
+                # Keep legacy COG values in sync
+                if board_idx == 0:
+                    self.imu_ax = imu['ax']
+                    self.imu_ay = imu['ay']
+                    self.imu_az = imu['az']
+                    self.imu_cal = imu['cal']
+            else:
+                # Attitude Pitch, Roll, Yaw as signed 16-bit little endian in centidegrees
+                pitch_cd, roll_cd, yaw_cd = struct.unpack('<hhh', data[0:6])
+                imu['pitch'] = round(pitch_cd / 100.0, 1)
+                imu['roll'] = round(roll_cd / 100.0, 1)
+                imu['yaw'] = round(yaw_cd / 100.0, 1)
+
+                # Keep legacy COG values in sync
+                if board_idx == 0:
+                    self.imu_pitch = imu['pitch']
+                    self.imu_roll = imu['roll']
+                    self.imu_yaw = imu['yaw']
+        except Exception as e:
+            self.frames_errors += 1
+
     def apply_sdu_frame(self, can_id: int, data: list[int]) -> None:
         """Apply a decoded SDU/TSPMU frame to the state."""
         decoded = decode_sdu_frame(can_id, data)
@@ -331,6 +392,18 @@ class TelemetryState:
                 'pitch': round(self.imu_pitch, 1), 'roll': round(self.imu_roll, 1),
                 'yaw': round(self.imu_yaw, 1), 'cal': self.imu_cal,
             },
+            'imus': [
+                {
+                    'ax': round(imu['ax'], 3),
+                    'ay': round(imu['ay'], 3),
+                    'az': round(imu['az'], 3),
+                    'pitch': round(imu['pitch'], 1),
+                    'roll': round(imu['roll'], 1),
+                    'yaw': round(imu['yaw'], 1),
+                    'cal': imu['cal']
+                }
+                for imu in self.imus
+            ],
             'inv': {
                 'rpm': round(self.inv_motor_speed),
                 'mot_t': round(self.inv_motor_temp, 1),
@@ -408,6 +481,7 @@ class TelemetryState:
         flat: dict[str, float | int | bool | None] = {}
         flatten_value_map(payload.get('gps', {}), 'gps', flat)
         flatten_value_map(payload.get('imu', {}), 'imu', flat)
+        flatten_value_map(payload.get('imus', []), 'imu', flat)
         flatten_value_map(payload.get('inv', {}), 'inv', flat)
         flatten_value_map(payload.get('bms', {}), 'bms', flat)
         flatten_value_map(payload.get('vcu', {}), 'vcu', flat)
@@ -529,11 +603,16 @@ async def loop_socketcan():
             can_id = msg.arbitration_id
             data = bytes(msg.data)
             
-            # SocketCAN frames from VCU/BMS/Inverter are standard DBC encoded
-            signals = decode_can_frame(can_id, data)
-            if signals is not None:
-                STATE.apply_dbc_signals(can_id, signals)
+            # Intercept raw IMU frames
+            if 0x4F5 <= can_id <= 0x4FA:
+                STATE.apply_imu_raw_frame(can_id, data)
                 STATE.frames_parsed += 1
+            else:
+                # SocketCAN frames from VCU/BMS/Inverter are standard DBC encoded
+                signals = decode_can_frame(can_id, data)
+                if signals is not None:
+                    STATE.apply_dbc_signals(can_id, signals)
+                    STATE.frames_parsed += 1
                 
         except asyncio.CancelledError:
             bus.shutdown()
@@ -554,6 +633,11 @@ def _process_frame(frame: SlcanFrame) -> None:
         if sdu_info is not None:
             STATE.apply_sdu_frame(frame.identifier, frame.data_bytes)
             return
+
+    # Intercept raw IMU frames
+    if 0x4F5 <= frame.identifier <= 0x4FA:
+        STATE.apply_imu_raw_frame(frame.identifier, data)
+        return
 
     # Otherwise try DBC decoding for standard 8-byte frames
     signals = decode_can_frame(frame.identifier, data)
@@ -582,14 +666,42 @@ async def loop_mock_generator():
         STATE.gps_fix = 1
         STATE.gps_sats = 12
 
-        # IMU
-        STATE.imu_ax = 0.05 * math.sin(t * 2.0)
-        STATE.imu_ay = 0.8 * math.sin(t * 0.1)  # lateral G in corner
-        STATE.imu_az = 1.0
-        STATE.imu_pitch = 1.2 * math.sin(t * 0.5)
-        STATE.imu_roll = 3.5 * math.sin(t * 0.1)
-        STATE.imu_yaw = (t * 20.0) % 360.0 - 180.0
-        STATE.imu_cal = 1
+        # IMU Mock data (0 = COG, 1 = Front, 2 = Rear)
+        # COG:
+        STATE.imus[0]['ax'] = round(0.15 * math.sin(t * 1.5), 3)
+        STATE.imus[0]['ay'] = round(0.8 * math.sin(t * 0.1), 3) # lateral G in corner
+        STATE.imus[0]['az'] = round(1.0 + 0.05 * math.cos(t * 2.0), 3)
+        STATE.imus[0]['pitch'] = round(1.2 * math.sin(t * 0.5), 1)
+        STATE.imus[0]['roll'] = round(3.5 * math.sin(t * 0.1), 1)
+        STATE.imus[0]['yaw'] = round((t * 20.0) % 360.0 - 180.0, 1)
+        STATE.imus[0]['cal'] = 1
+
+        # Front: leading phase (+0.3) and slightly higher noise/vibration
+        STATE.imus[1]['ax'] = round(0.20 * math.sin(t * 1.5 + 0.3) + 0.05 * math.sin(t * 12.0), 3)
+        STATE.imus[1]['ay'] = round(0.9 * math.sin(t * 0.1 + 0.2), 3)
+        STATE.imus[1]['az'] = round(1.02 + 0.08 * math.cos(t * 2.5), 3)
+        STATE.imus[1]['pitch'] = round(1.5 * math.sin(t * 0.5 + 0.3), 1)
+        STATE.imus[1]['roll'] = round(4.0 * math.sin(t * 0.1 + 0.2), 1)
+        STATE.imus[1]['yaw'] = round(((t * 20.0 + 5.0) % 360.0) - 180.0, 1)
+        STATE.imus[1]['cal'] = 1
+
+        # Rear: lagging phase (-0.3)
+        STATE.imus[2]['ax'] = round(0.12 * math.sin(t * 1.5 - 0.3) + 0.03 * math.sin(t * 8.0), 3)
+        STATE.imus[2]['ay'] = round(0.7 * math.sin(t * 0.1 - 0.2), 3)
+        STATE.imus[2]['az'] = round(0.98 + 0.04 * math.cos(t * 1.8), 3)
+        STATE.imus[2]['pitch'] = round(1.0 * math.sin(t * 0.5 - 0.3), 1)
+        STATE.imus[2]['roll'] = round(3.0 * math.sin(t * 0.1 - 0.2), 1)
+        STATE.imus[2]['yaw'] = round(((t * 20.0 - 5.0) % 360.0) - 180.0, 1)
+        STATE.imus[2]['cal'] = 1
+
+        # Keep legacy flat variables in sync
+        STATE.imu_ax = STATE.imus[0]['ax']
+        STATE.imu_ay = STATE.imus[0]['ay']
+        STATE.imu_az = STATE.imus[0]['az']
+        STATE.imu_pitch = STATE.imus[0]['pitch']
+        STATE.imu_roll = STATE.imus[0]['roll']
+        STATE.imu_yaw = STATE.imus[0]['yaw']
+        STATE.imu_cal = STATE.imus[0]['cal']
 
         # Inverter
         STATE.inv_motor_speed = 3500 + 1500 * math.sin(t * 0.2)

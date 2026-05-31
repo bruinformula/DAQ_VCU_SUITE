@@ -34,6 +34,15 @@ const DEFAULT_LOG_SIGNALS = [
   'fusebox.battery_v',
   'fusebox.lvb_soc',
   'fusebox.dcdc_temp',
+  'imu[0].ax',
+  'imu[0].ay',
+  'imu[0].az',
+  'imu[1].ax',
+  'imu[1].ay',
+  'imu[1].az',
+  'imu[2].ax',
+  'imu[2].ay',
+  'imu[2].az',
 ];
 
 function App() {
@@ -59,6 +68,13 @@ function App() {
     packV: 0,
     speed: 0,
     coolant: 0,
+    ax: 0,
+    ay: 0,
+    imus: [
+      { ax: 0, ay: 0, az: 0 },
+      { ax: 0, ay: 0, az: 0 },
+      { ax: 0, ay: 0, az: 0 },
+    ],
   });
   const [selectedLogSignals, setSelectedLogSignals] = useState(DEFAULT_LOG_SIGNALS);
   const [ipAddress, setIpAddress] = useState('');
@@ -139,6 +155,13 @@ function App() {
         packV: data?.bms?.v || 0,
         speed: data?.inv?.rpm || 0,
         coolant: data?.inv?.cool_t || 0,
+        ax: data?.imu?.ax || 0,
+        ay: data?.imu?.ay || 0,
+        imus: (data?.imus && data.imus.length >= 3) ? data.imus : [
+          { ax: 0, ay: 0, az: 0, pitch: 0, roll: 0, yaw: 0, cal: 0 },
+          { ax: 0, ay: 0, az: 0, pitch: 0, roll: 0, yaw: 0, cal: 0 },
+          { ax: 0, ay: 0, az: 0, pitch: 0, roll: 0, yaw: 0, cal: 0 }
+        ],
       });
       animationFrame = requestAnimationFrame(updateMetrics);
     };
@@ -159,6 +182,27 @@ function App() {
   }, [selectedLogSignals, isLogging, targetIp]);
 
   const currentLogFile = telemetryRef.current?.log_file || '';
+
+  const maxG = 2.0;
+  const getImuCoords = (imus, index) => {
+    const imu = imus?.[index] || { ax: 0, ay: 0, az: 0 };
+    const gX = imu.ay || 0;
+    const gY = imu.ax || 0;
+    const gMag = Math.sqrt(gX * gX + gY * gY);
+    const cx = 50 + Math.max(-1, Math.min(1, gX / maxG)) * 50;
+    const cy = 50 - Math.max(-1, Math.min(1, gY / maxG)) * 50;
+    return { cx, cy, gMag };
+  };
+
+  const imusArray = liveMetrics.imus || [
+    { ax: 0, ay: 0, az: 0 },
+    { ax: 0, ay: 0, az: 0 },
+    { ax: 0, ay: 0, az: 0 }
+  ];
+
+  const cogCoords = getImuCoords(imusArray, 0);
+  const frontCoords = getImuCoords(imusArray, 1);
+  const rearCoords = getImuCoords(imusArray, 2);
 
   return (
     <div className="app-container">
@@ -291,15 +335,79 @@ function App() {
                     />
                   ))}
                 </div>
-                <section className="map-shell glass">
-                  <div className="map-shell-header">
-                    <h3>Track Map</h3>
-                    <p>GPS stays live here while the grouped plots handle the powertrain and chassis signals.</p>
-                  </div>
-                  <div className="map-shell-body">
-                    <MapViewer telemetryRef={telemetryRef} isConnected={isConnected} />
-                  </div>
-                </section>
+                <div style={{ display: 'flex', gap: '16px', minHeight: '460px', flexWrap: 'wrap' }}>
+                  <section className="map-shell glass" style={{ flex: '2 1 480px', minHeight: '460px' }}>
+                    <div className="map-shell-header">
+                      <h3>Track Map</h3>
+                      <p>GPS stays live here while the grouped plots handle the powertrain and chassis signals.</p>
+                    </div>
+                    <div className="map-shell-body">
+                      <MapViewer telemetryRef={telemetryRef} isConnected={isConnected} />
+                    </div>
+                  </section>
+
+                  <section className="gforce-shell glass" style={{ flex: '1 1 240px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px', borderRadius: '18px', minHeight: '460px', alignItems: 'center', justifyContent: 'center' }}>
+                    <div style={{ width: '100%', textAlign: 'center', marginBottom: '8px' }}>
+                      <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 600 }}>G-Force Meter</h3>
+                      <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', margin: '4px 0 0' }}>Real-time acceleration vector</p>
+                    </div>
+                    
+                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', width: '100%' }}>
+                      <div className="g-meter-container" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-secondary)', padding: '16px', borderRadius: '14px', border: '1px solid var(--border-color)', width: '100%', maxWidth: '220px' }}>
+                        <span style={{ fontSize: '0.62rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '8px', letterSpacing: '0.06em' }}>G-Force (2.0G)</span>
+                        <svg className="g-meter-svg" width="140" height="140" viewBox="0 0 100 100" style={{ display: 'block', overflow: 'visible' }}>
+                          {/* Circular borders representing G zones */}
+                          <circle cx="50" cy="50" r="50" fill="none" stroke="var(--text-secondary)" strokeOpacity="0.3" strokeWidth="1.5"></circle>
+                          <circle cx="50" cy="50" r="25" fill="none" stroke="var(--text-secondary)" strokeOpacity="0.25" strokeWidth="1" strokeDasharray="2,2"></circle>
+                          
+                          {/* Crosshair axes */}
+                          <line x1="0" y1="50" x2="100" y2="50" stroke="var(--text-secondary)" strokeOpacity="0.3" strokeWidth="1"></line>
+                          <line x1="50" y1="0" x2="50" y2="100" stroke="var(--text-secondary)" strokeOpacity="0.3" strokeWidth="1"></line>
+                          
+                          {/* Labels for directions */}
+                          <text x="50" y="8" text-anchor="middle" fill="var(--text-secondary)" fillOpacity="0.8" fontWeight="600" fontSize="8" fontFamily="sans-serif">F</text>
+                          <text x="50" y="98" text-anchor="middle" fill="var(--text-secondary)" fillOpacity="0.8" fontWeight="600" fontSize="8" fontFamily="sans-serif">B</text>
+                          <text x="6" y="53" text-anchor="start" fill="var(--text-secondary)" fillOpacity="0.8" fontWeight="600" fontSize="8" fontFamily="sans-serif">L</text>
+                          <text x="94" y="53" text-anchor="end" fill="var(--text-secondary)" fillOpacity="0.8" fontWeight="600" fontSize="8" fontFamily="sans-serif">R</text>
+
+                          {/* COG G position indicator dot (Cyan) */}
+                          <circle cx={cogCoords.cx.toFixed(1)} cy={cogCoords.cy.toFixed(1)} r="4.5" fill="var(--accent-primary)" stroke="#ffffff" strokeWidth="0.75" strokeOpacity="0.6" style={{ filter: 'drop-shadow(0 0 5px var(--accent-primary))', transition: 'cx 60ms ease, cy 60ms ease' }}></circle>
+
+                          {/* Front G position indicator dot (Emerald Green) */}
+                          <circle cx={frontCoords.cx.toFixed(1)} cy={frontCoords.cy.toFixed(1)} r="4.5" fill="var(--accent-success)" stroke="#ffffff" strokeWidth="0.75" strokeOpacity="0.6" style={{ filter: 'drop-shadow(0 0 5px var(--accent-success))', transition: 'cx 60ms ease, cy 60ms ease' }}></circle>
+
+                          {/* Rear G position indicator dot (Sunset Red) */}
+                          <circle cx={rearCoords.cx.toFixed(1)} cy={rearCoords.cy.toFixed(1)} r="4.5" fill="var(--accent-danger)" stroke="#ffffff" strokeWidth="0.75" strokeOpacity="0.6" style={{ filter: 'drop-shadow(0 0 5px var(--accent-danger))', transition: 'cx 60ms ease, cy 60ms ease' }}></circle>
+                        </svg>
+
+                        {/* Inline color legend with individual magnitudes */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', width: '100%', marginTop: '14px', fontSize: '0.75rem' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--accent-primary)', boxShadow: '0 0 4px var(--accent-primary)' }} />
+                              <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>COG</span>
+                            </div>
+                            <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--text-primary)' }}>{cogCoords.gMag.toFixed(2)} G</span>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--accent-success)', boxShadow: '0 0 4px var(--accent-success)' }} />
+                              <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>Front</span>
+                            </div>
+                            <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--text-primary)' }}>{frontCoords.gMag.toFixed(2)} G</span>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--accent-danger)', boxShadow: '0 0 4px var(--accent-danger)' }} />
+                              <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>Rear</span>
+                            </div>
+                            <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--text-primary)' }}>{rearCoords.gMag.toFixed(2)} G</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </section>
+                </div>
               </div>
             ) : (
               <LogViewer

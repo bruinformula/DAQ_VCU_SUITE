@@ -313,7 +313,7 @@ export const signalGroups = [
   },
   {
     id: 'imu',
-    name: 'IMU',
+    name: 'IMU (Center of Gravity)',
     signals: [
       makeSignal('imu.ax', 'Accel X', 'g', '#ff2a4d'),
       makeSignal('imu.ay', 'Accel Y', 'g', '#00ff7f'),
@@ -321,6 +321,33 @@ export const signalGroups = [
       makeSignal('imu.pitch', 'Pitch', '°', '#ffb800'),
       makeSignal('imu.roll', 'Roll', '°', '#ff70a6'),
       makeSignal('imu.yaw', 'Yaw', '°', '#70d6ff'),
+    ],
+  },
+  {
+    id: 'imu_triple',
+    name: 'Triple IMU Sensors',
+    signals: [
+      // COG
+      makeSignal('imu[0].ax', 'COG Accel X', 'g', '#00e5ff'),
+      makeSignal('imu[0].ay', 'COG Accel Y', 'g', '#00e5ff'),
+      makeSignal('imu[0].az', 'COG Accel Z', 'g', '#00e5ff'),
+      makeSignal('imu[0].pitch', 'COG Pitch', '°', '#00e5ff'),
+      makeSignal('imu[0].roll', 'COG Roll', '°', '#00e5ff'),
+      makeSignal('imu[0].yaw', 'COG Yaw', '°', '#00e5ff'),
+      // Front
+      makeSignal('imu[1].ax', 'Front Accel X', 'g', '#00ff7f'),
+      makeSignal('imu[1].ay', 'Front Accel Y', 'g', '#00ff7f'),
+      makeSignal('imu[1].az', 'Front Accel Z', 'g', '#00ff7f'),
+      makeSignal('imu[1].pitch', 'Front Pitch', '°', '#00ff7f'),
+      makeSignal('imu[1].roll', 'Front Roll', '°', '#00ff7f'),
+      makeSignal('imu[1].yaw', 'Front Yaw', '°', '#00ff7f'),
+      // Rear
+      makeSignal('imu[2].ax', 'Rear Accel X', 'g', '#ff2a4d'),
+      makeSignal('imu[2].ay', 'Rear Accel Y', 'g', '#ff2a4d'),
+      makeSignal('imu[2].az', 'Rear Accel Z', 'g', '#ff2a4d'),
+      makeSignal('imu[2].pitch', 'Rear Pitch', '°', '#ff2a4d'),
+      makeSignal('imu[2].roll', 'Rear Roll', '°', '#ff2a4d'),
+      makeSignal('imu[2].yaw', 'Rear Yaw', '°', '#ff2a4d'),
     ],
   },
 ];
@@ -361,6 +388,8 @@ export const liveChartGroups = [
   { id: 'fusebox-power', title: 'Fusebox Power Draw', signals: ['fusebox.accy_fan_power', 'fusebox.tractive_fan_power', 'fusebox.tractive_pumps_power', 'fusebox.charging_power'] },
   { id: 'fusebox-temp', title: 'Fusebox Temperatures', signals: ['fusebox.dcdc_temp', 'fusebox.ambient_temp'] },
   { id: 'sdu-wheel-speed', title: 'Wheel Speeds', signals: ['sdu[0].wrpm', 'sdu[1].wrpm', 'sdu[2].wrpm', 'sdu[3].wrpm'] },
+  { id: 'imu-lateral-comparison', title: 'Lateral Accel Comparison', signals: ['imu[0].ay', 'imu[1].ay', 'imu[2].ay'] },
+  { id: 'imu-longitudinal-comparison', title: 'Longitudinal Accel Comparison', signals: ['imu[0].ax', 'imu[1].ax', 'imu[2].ax'] },
 ];
 
 export function getSignalDefinition(signalId) {
@@ -398,6 +427,7 @@ export function flattenTelemetryData(data) {
 
   walk(data?.gps || {}, 'gps');
   walk(data?.imu || {}, 'imu');
+  walk(data?.imus || [], 'imu');
   walk(data?.inv || {}, 'inv');
   walk(data?.bms || {}, 'bms');
   walk(data?.vcu || {}, 'vcu');
