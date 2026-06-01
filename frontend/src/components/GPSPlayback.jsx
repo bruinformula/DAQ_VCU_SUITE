@@ -1,0 +1,371 @@
+import { useEffect, useMemo, useRef, useState } from 'react';
+import maplibregl from 'maplibre-gl';
+import 'maplibre-gl/dist/maplibre-gl.css';
+import { formatSignalValue, getSignalDefinition } from '../signals';
+import {
+  clampPlayback,
+  findClosestIndexByTimestamp,
+  formatPlaybackSeconds,
+  formatPlaybackTimestamp,
+  gMagnitude,
+  gToColor,
+  normalizeSampleTimestamps,
+} from './logPlaybackUtils';
+
+const STREET_STYLE = {
+  version: 8,
+  sources: {
+    osm: {
+      type: 'raster',
+      tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+      tileSize: 256,
+      attribution: '&copy; OpenStreetMap contributors',
+      maxzoom: 19,
+    },
+  },
+  layers: [
+    { id: 'background', type: 'background', paint: { 'background-color': '#0f141a' } },
+    {
+      id: 'osm-tiles',
+      type: 'raster',
+      source: 'osm',
+      minzoom: 0,
+      maxzoom: 19,
+      paint: {
+        'raster-saturation': -0.15,
+        'raster-contrast': 0.08,
+        'raster-brightness-min': 0.08,
+        'raster-brightness-max': 0.96,
+      },
+    },
+  ],
+};
+
+function rtkStatusLabel(quality, state) {
+  if (state) return String(state).replace(/_/g, ' ').toUpperCase();
+  return ({
+    0: 'NO FIX',
+    1: 'GPS',
+    2: 'DGPS',
+    4: 'RTK FIX',
+    5: 'RTK FLOAT',
+  }[quality] || `Q${quality ?? '--'}`);
+}
+
+function buildReplaySignalPath(points, yMin, yMax) {
+  if (points.length < 2) return '';
+  return points.map((point, index) => {
+    const x = 28 + (index / Math.max(points.length - 1, 1)) * 500;
+    const normalized = yMax === yMin ? 0.5 : (point.value - yMin) / (yMax - yMin);
+    const y = 188 - (normalized * 156);
+    return `${index === 0 ? 'M' : 'L'} ${x} ${y}`;
+  }).join(' ');
+}
+
+function updateTrackSource(map, replayPoints) {
+  if (!map?.isStyleLoaded()) return;
+  const source = map.getSource('gps-playback-track');
+  if (!source) return;
+
+  source.setData({
+    type: 'FeatureCollection',
+    features: replayPoints.map((point) => ({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [point.lon, point.lat] },
+      properties: {
+        timestamp: point.timestamp,
+        color: gToColor(point.gMag),
+      },
+    })),
+  });
+
+  if (replayPoints.length) {
+    const bounds = replayPoints.reduce(
+      (acc, point) => acc.extend([point.lon, point.lat]),
+      new maplibregl.LngLatBounds(
+        [replayPoints[0].lon, replayPoints[0].lat],
+        [replayPoints[0].lon, replayPoints[0].lat],
+      ),
+    );
+    map.fitBounds(bounds, { padding: 60, duration: 0, maxZoom: 17 });
+  }
+}
+
+export default function GPSPlayback({ samples = [], availableSignalIds = [] }) {
+  const mapRef = useRef(null);
+  const mapNodeRef = useRef(null);
+  const markerRef = useRef(null);
+  const pointsRef = useRef([]);
+  const [playbackIndex, setPlaybackIndex] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [selectedSignalId, setSelectedSignalId] = useState('sdu[0].shock');
+
+  const signalOptions = useMemo(() => (
+    availableSignalIds.filter((signalId) => signalId !== 'ts')
+  ), [availableSignalIds]);
+
+  useEffect(() => {
+    if (!signalOptions.length) return;
+    if (!signalOptions.includes(selectedSignalId)) {
+      setSelectedSignalId(signalOptions[0]);
+    }
+  }, [selectedSignalId, signalOptions]);
+
+  const points = useMemo(() => {
+    const timestamps = normalizeSampleTimestamps(samples);
+    return samples.map((sample, index) => {
+      const lat = sample['gps.lat'];
+      const lon = sample['gps.lon'];
+      if (typeof lat !== 'number' || typeof lon !== 'number' || lat === 0 || lon === 0) {
+        return null;
+      }
+      return {
+        index,
+        timestamp: timestamps[index] ?? 0,
+        lat,
+        lon,
+        alt: sample['gps.alt'],
+        vel: sample['gps.vel'],
+        hdg: sample['gps.hdg'],
+        sats: sample['gps.sats'],
+        fixQuality: sample['gps.fix_quality'],
+        rtkState: sample['gps.rtk_state'],
+        hdop: sample['gps.hdop'],
+        headingAccuracy: sample['gps.heading_accuracy_deg'],
+        baseline: sample['gps.baseline_m'],
+        headingSource: sample['gps.heading_source'],
+        signalValue: sample[selectedSignalId],
+        gMag: gMagnitude(sample, 'imu[0].ax', 'imu[0].ay'),
+      };
+    }).filter(Boolean);
+  }, [samples, selectedSignalId]);
+
+  const signalSeries = useMemo(() => (
+    points
+      .filter((point) => typeof point.signalValue === 'number' && Number.isFinite(point.signalValue))
+      .map((point) => ({ index: point.index, timestamp: point.timestamp, value: point.signalValue }))
+  ), [points]);
+
+  useEffect(() => {
+    pointsRef.current = points;
+  }, [points]);
+
+  useEffect(() => {
+    if (playbackIndex >= points.length) {
+      setPlaybackIndex(Math.max(points.length - 1, 0));
+    }
+  }, [playbackIndex, points.length]);
+
+  useEffect(() => {
+    if (!isPlaying || points.length < 2) return undefined;
+    const timer = window.setInterval(() => {
+      setPlaybackIndex((current) => {
+        if (current >= points.length - 1) {
+          setIsPlaying(false);
+          return points.length - 1;
+        }
+        return current + 1;
+      });
+    }, 50);
+    return () => window.clearInterval(timer);
+  }, [isPlaying, points.length]);
+
+  useEffect(() => {
+    if (mapRef.current || !mapNodeRef.current) return undefined;
+    const map = new maplibregl.Map({
+      container: mapNodeRef.current,
+      style: STREET_STYLE,
+      center: [-118.445, 34.068],
+      zoom: 15,
+      pitch: 40,
+      bearing: -8,
+      antialias: true,
+      attributionControl: false,
+    });
+    mapRef.current = map;
+    map.addControl(new maplibregl.NavigationControl({ showCompass: true, visualizePitch: true }), 'top-right');
+
+    const markerEl = document.createElement('div');
+    markerEl.className = 'gps-playback-marker';
+    markerRef.current = new maplibregl.Marker({ element: markerEl, rotationAlignment: 'map' }).setLngLat([-118.445, 34.068]).addTo(map);
+
+    map.on('load', () => {
+      map.addSource('gps-playback-track', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+      });
+      map.addLayer({
+        id: 'gps-playback-track-points',
+        type: 'circle',
+        source: 'gps-playback-track',
+        paint: {
+          'circle-radius': 4,
+          'circle-color': ['get', 'color'],
+          'circle-opacity': 0.82,
+          'circle-stroke-width': 1,
+          'circle-stroke-color': 'rgba(255,255,255,0.55)',
+        },
+      });
+      map.on('click', 'gps-playback-track-points', (event) => {
+        const feature = event.features?.[0];
+        const targetTs = feature?.properties?.timestamp;
+        if (targetTs == null) return;
+        const timestamps = pointsRef.current.map((point) => point.timestamp);
+        setIsPlaying(false);
+        setPlaybackIndex(findClosestIndexByTimestamp(timestamps, Number(targetTs)));
+      });
+      updateTrackSource(map, pointsRef.current);
+    });
+
+    return () => {
+      map.remove();
+      mapRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    updateTrackSource(mapRef.current, points);
+  }, [points]);
+
+  const currentPoint = points[clampPlayback(playbackIndex, 0, Math.max(points.length - 1, 0))] || null;
+
+  useEffect(() => {
+    const map = mapRef.current;
+    const marker = markerRef.current;
+    if (!map || !marker || !currentPoint) return;
+    marker.setLngLat([currentPoint.lon, currentPoint.lat]);
+    marker.setRotation(currentPoint.hdg || 0);
+    map.easeTo({
+      center: [currentPoint.lon, currentPoint.lat],
+      bearing: currentPoint.hdg || map.getBearing(),
+      duration: 180,
+      essential: true,
+    });
+  }, [currentPoint]);
+
+  const signalDef = getSignalDefinition(selectedSignalId);
+  const yValues = signalSeries.map((point) => point.value);
+  const yMin = yValues.length ? Math.min(...yValues) : 0;
+  const yMax = yValues.length ? Math.max(...yValues) : 1;
+  const currentSignal = currentPoint && typeof currentPoint.signalValue === 'number'
+    ? currentPoint.signalValue
+    : null;
+  const totalDuration = points.length > 1 ? points[points.length - 1].timestamp - points[0].timestamp : 0;
+  const currentDuration = currentPoint ? currentPoint.timestamp - points[0].timestamp : 0;
+
+  return (
+    <section className="gps-playback-shell glass">
+      <div className="gps-playback-header">
+        <div>
+          <h3>GPS Replay Studio</h3>
+          <p>Replay the lap on a map with RTK context, G-coded track points, and a synchronized side graph.</p>
+        </div>
+        <div className="gps-playback-controls">
+          <select className="plot-overlay-select" value={selectedSignalId} onChange={(event) => setSelectedSignalId(event.target.value)}>
+            {signalOptions.map((signalId) => {
+              const signal = getSignalDefinition(signalId);
+              return <option key={signalId} value={signalId}>{signal.name}</option>;
+            })}
+          </select>
+          <button
+            type="button"
+            className="plot-tool-btn"
+            onClick={() => {
+              if (playbackIndex >= points.length - 1) setPlaybackIndex(0);
+              setIsPlaying((current) => !current);
+            }}
+            disabled={points.length < 2}
+          >
+            {isPlaying ? 'Pause' : (playbackIndex >= points.length - 1 ? 'Replay' : 'Play')}
+          </button>
+          <button
+            type="button"
+            className="plot-tool-btn"
+            onClick={() => {
+              setIsPlaying(false);
+              setPlaybackIndex(points.length > 0 ? points.length - 1 : 0);
+            }}
+            disabled={points.length < 2}
+          >
+            Show Full Lap
+          </button>
+        </div>
+      </div>
+
+      <div className="gps-playback-grid">
+        <div className="gps-playback-map-card">
+          <div ref={mapNodeRef} className="gps-playback-map" />
+          <div className="gps-playback-map-overlay">
+            <span>{currentPoint ? formatPlaybackTimestamp(currentPoint.timestamp) : '--'}</span>
+            <strong>{currentPoint ? rtkStatusLabel(currentPoint.fixQuality, currentPoint.rtkState) : 'NO GPS'}</strong>
+          </div>
+        </div>
+
+        <div className="gps-playback-side">
+          <div className="gps-playback-rtk-panel">
+            <div className="gps-playback-stat"><span>Playback</span><strong>{formatPlaybackSeconds(currentDuration)}</strong></div>
+            <div className="gps-playback-stat"><span>Total</span><strong>{formatPlaybackSeconds(totalDuration)}</strong></div>
+            <div className="gps-playback-stat"><span>Fix</span><strong>{currentPoint ? rtkStatusLabel(currentPoint.fixQuality, currentPoint.rtkState) : '--'}</strong></div>
+            <div className="gps-playback-stat"><span>Satellites</span><strong>{currentPoint?.sats ?? '--'}</strong></div>
+            <div className="gps-playback-stat"><span>HDOP</span><strong>{currentPoint?.hdop != null ? currentPoint.hdop.toFixed(2) : '--'}</strong></div>
+            <div className="gps-playback-stat"><span>Heading Acc</span><strong>{currentPoint?.headingAccuracy != null ? `${currentPoint.headingAccuracy.toFixed(2)} deg` : '--'}</strong></div>
+            <div className="gps-playback-stat"><span>Baseline</span><strong>{currentPoint?.baseline != null ? `${currentPoint.baseline.toFixed(3)} m` : '--'}</strong></div>
+            <div className="gps-playback-stat"><span>Heading Src</span><strong>{currentPoint?.headingSource || '--'}</strong></div>
+            <div className="gps-playback-stat gps-playback-stat-wide"><span>Coordinates</span><strong>{currentPoint ? `${currentPoint.lat.toFixed(6)}, ${currentPoint.lon.toFixed(6)}` : '--'}</strong></div>
+          </div>
+
+          <div className="gps-playback-side-plot">
+            <div className="gps-playback-side-header">
+              <h4>{signalDef.name}</h4>
+              <span>{currentSignal == null ? '--' : `${formatSignalValue(signalDef, currentSignal)} ${signalDef.unit}`}</span>
+            </div>
+            <svg viewBox="0 0 560 220" className="gps-playback-side-svg">
+              <line x1="28" y1="188" x2="532" y2="188" stroke="rgba(255,255,255,0.16)" strokeWidth="1.4" />
+              <line x1="28" y1="24" x2="28" y2="188" stroke="rgba(255,255,255,0.16)" strokeWidth="1.4" />
+              <path d={buildReplaySignalPath(signalSeries, yMin, yMax)} fill="none" stroke={signalDef.color} strokeWidth="2.8" strokeLinecap="round" />
+              {currentPoint && signalSeries.length > 0 ? (
+                (() => {
+                  const nearest = signalSeries.reduce((best, point) => (
+                    Math.abs(point.timestamp - currentPoint.timestamp) < Math.abs(best.timestamp - currentPoint.timestamp) ? point : best
+                  ), signalSeries[0]);
+                  const idx = signalSeries.indexOf(nearest);
+                  const x = 28 + (idx / Math.max(signalSeries.length - 1, 1)) * 500;
+                  const normalized = yMax === yMin ? 0.5 : (nearest.value - yMin) / (yMax - yMin);
+                  const y = 188 - (normalized * 156);
+                  return (
+                    <>
+                      <line x1={x} y1="24" x2={x} y2="188" stroke="rgba(0,229,255,0.4)" strokeDasharray="4 4" />
+                      <circle cx={x} cy={y} r="5" fill={signalDef.color} stroke="#ffffff" strokeOpacity="0.6" strokeWidth="1" />
+                    </>
+                  );
+                })()
+              ) : null}
+            </svg>
+            <div className="gps-playback-side-caption">
+              <span>Map clicks snap the replay head and this graph together.</span>
+              <span>Track points are color-coded by COG G magnitude.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="gg-slider-row">
+        <input
+          className="gg-slider"
+          type="range"
+          min="0"
+          max={Math.max(points.length - 1, 0)}
+          value={clampPlayback(playbackIndex, 0, Math.max(points.length - 1, 0))}
+          onChange={(event) => {
+            setIsPlaying(false);
+            setPlaybackIndex(Number(event.target.value));
+          }}
+        />
+        <div className="gg-slider-caption">
+          <span>Scrub the replay head to move both the map and side graph together.</span>
+          <span>Choose any logged signal to compare against position over time.</span>
+        </div>
+      </div>
+    </section>
+  );
+}

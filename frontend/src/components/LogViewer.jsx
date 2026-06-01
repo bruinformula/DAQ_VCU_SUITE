@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import SignalPlot from './SignalPlot';
 import GGDiagram from './GGDiagram';
+import GPSPlayback from './GPSPlayback';
 import { buildChartGroupsForSignals } from '../signals';
 
 function parseCsvLine(line) {
@@ -79,6 +80,8 @@ export default function LogViewer() {
   const [logData, setLogData] = useState(null);
   const [isLoadingFile, setIsLoadingFile] = useState(false);
   const [error, setError] = useState('');
+  const [customSignalId, setCustomSignalId] = useState('');
+  const [customSignalIds, setCustomSignalIds] = useState([]);
 
   const loadCsvContent = (content, filename, filePath = '') => {
     const parsed = parseLogCsv(content || '', filename || 'Telemetry Log');
@@ -113,6 +116,32 @@ export default function LogViewer() {
     if (!logData?.headers) return [];
     return buildChartGroupsForSignals(logData.headers);
   }, [logData]);
+
+  useEffect(() => {
+    const headers = logData?.headers || [];
+    if (!headers.length) {
+      setCustomSignalId('');
+      setCustomSignalIds([]);
+      return;
+    }
+
+    const numericSignals = headers.filter((header) => header !== 'ts');
+    setCustomSignalId((current) => (
+      numericSignals.includes(current) ? current : (numericSignals[0] || '')
+    ));
+    setCustomSignalIds((current) => current.filter((signalId) => numericSignals.includes(signalId)));
+  }, [logData]);
+
+  const addCustomSignal = () => {
+    if (!customSignalId) return;
+    setCustomSignalIds((current) => (
+      current.includes(customSignalId) ? current : [...current, customSignalId]
+    ));
+  };
+
+  const removeCustomSignal = (signalId) => {
+    setCustomSignalIds((current) => current.filter((entry) => entry !== signalId));
+  };
 
   return (
     <div className="logs-view logs-view-local">
@@ -176,14 +205,72 @@ export default function LogViewer() {
             <div className="logs-summary glass">
               <div>
                 <h3>{logData.filename}</h3>
-                <p>{logData.rows?.length || 0} rows • drag to zoom, click twice to measure, recolor overlays, full-screen any graph, and replay a G-G diagram</p>
+                <p>{logData.rows?.length || 0} rows • drag to zoom, click twice to measure, recolor overlays, full-screen any graph, replay G-G and GPS, and build your own comparison chart</p>
                 <p>{logData.filePath}</p>
               </div>
             </div>
+            <GPSPlayback
+              samples={logData.rows || []}
+              availableSignalIds={logData.headers || []}
+            />
             <GGDiagram
               samples={logData.rows || []}
               availableSignalIds={logData.headers || []}
             />
+            <section className="log-custom-shell glass">
+              <div className="log-custom-header">
+                <div>
+                  <h3>Custom Replay Plot</h3>
+                  <p>Build a graph from any logged parameters, then use overlays, measurement cursors, and full-screen mode to inspect correlations.</p>
+                </div>
+                <div className="log-custom-controls">
+                  <select
+                    className="plot-overlay-select"
+                    value={customSignalId}
+                    onChange={(event) => setCustomSignalId(event.target.value)}
+                    disabled={!logData.headers?.length}
+                  >
+                    {(logData.headers || []).filter((signalId) => signalId !== 'ts').map((signalId) => (
+                      <option key={signalId} value={signalId}>{signalId}</option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    className="plot-tool-btn"
+                    onClick={addCustomSignal}
+                    disabled={!customSignalId}
+                  >
+                    Add To Plot
+                  </button>
+                </div>
+              </div>
+              {customSignalIds.length ? (
+                <>
+                  <div className="plot-overlay-chips">
+                    {customSignalIds.map((signalId) => (
+                      <button
+                        key={signalId}
+                        type="button"
+                        className="plot-overlay-chip"
+                        onClick={() => removeCustomSignal(signalId)}
+                      >
+                        Remove {signalId}
+                      </button>
+                    ))}
+                  </div>
+                  <SignalPlot
+                    title="Custom Replay Plot"
+                    signalIds={customSignalIds}
+                    staticSamples={logData.rows || []}
+                    availableSignalIds={logData.headers || []}
+                    allowOverlay
+                    emptyMessage="Pick one or more parameters to start your custom replay chart."
+                  />
+                </>
+              ) : (
+                <div className="log-custom-empty">Pick any logged parameter, add it to the plot, then layer on overlays to compare tire, GPS, shock, or powertrain behavior side by side.</div>
+              )}
+            </section>
             <div className="plot-grid">
               {chartGroups.map((group) => (
                 <SignalPlot

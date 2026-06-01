@@ -1,63 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
+import {
+  clampPlayback,
+  formatPlaybackSeconds,
+  formatPlaybackTimestamp,
+  normalizeSampleTimestamps,
+} from './logPlaybackUtils';
 
 const DIAGRAM_SIZE = 360;
 const CENTER = DIAGRAM_SIZE / 2;
 const RADIUS = 150;
-
-function normalizeSampleTimestamps(samples) {
-  const rawTimestamps = samples.map((sample) => (
-    typeof sample?.ts === 'number' && Number.isFinite(sample.ts) ? sample.ts : null
-  ));
-  const positiveTimestamps = rawTimestamps.filter((value) => value != null && value > 0);
-
-  if (positiveTimestamps.length === 0) {
-    return samples.map((_, index) => index * 100);
-  }
-
-  const epochLike = positiveTimestamps[0] > 1e8;
-  const fallbackMs = positiveTimestamps[0] * 1000;
-  let previousMs = fallbackMs;
-
-  return rawTimestamps.map((value, index) => {
-    let timestampMs;
-
-    if (value == null) {
-      timestampMs = index === 0 ? fallbackMs : previousMs;
-    } else if (epochLike) {
-      timestampMs = value > 0 ? value * 1000 : previousMs;
-    } else {
-      timestampMs = value * 1000;
-    }
-
-    if (!Number.isFinite(timestampMs)) {
-      timestampMs = previousMs;
-    }
-
-    if (index > 0 && timestampMs < previousMs) {
-      timestampMs = previousMs;
-    }
-
-    previousMs = timestampMs;
-    return timestampMs;
-  });
-}
-
-function clamp(value, min, max) {
-  return Math.max(min, Math.min(max, value));
-}
-
-function formatTimestamp(timestampMs) {
-  if (!timestampMs) return '--';
-  return new Date(timestampMs).toLocaleTimeString([], {
-    hour: 'numeric',
-    minute: '2-digit',
-    second: '2-digit',
-  });
-}
-
-function formatSeconds(ms) {
-  return `${(ms / 1000).toFixed(2)} s`;
-}
 
 const sensorOptions = [
   { id: 0, label: 'COG IMU', ax: 'imu[0].ax', ay: 'imu[0].ay', color: '#00e5ff' },
@@ -70,6 +21,7 @@ export default function GGDiagram({ samples = [], availableSignalIds = [] }) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackIndex, setPlaybackIndex] = useState(0);
   const [swapAxes, setSwapAxes] = useState(false);
+  const [viewMode, setViewMode] = useState('xy');
 
   const availableSensors = useMemo(() => (
     sensorOptions.filter((sensor) => availableSignalIds.includes(sensor.ax) && availableSignalIds.includes(sensor.ay))
@@ -126,7 +78,7 @@ export default function GGDiagram({ samples = [], availableSignalIds = [] }) {
     return () => window.clearInterval(timer);
   }, [isPlaying, trace.length]);
 
-  const currentIndex = clamp(playbackIndex, 0, Math.max(trace.length - 1, 0));
+  const currentIndex = clampPlayback(playbackIndex, 0, Math.max(trace.length - 1, 0));
   const displayedTrace = trace.slice(0, currentIndex + 1);
   const currentPoint = displayedTrace[displayedTrace.length - 1] || null;
   const totalDurationMs = trace.length > 1 ? trace[trace.length - 1].timestamp - trace[0].timestamp : 0;
@@ -186,6 +138,15 @@ export default function GGDiagram({ samples = [], availableSignalIds = [] }) {
             />
             <span>Swap Lat / Long</span>
           </label>
+          <select
+            className="plot-overlay-select"
+            value={viewMode}
+            onChange={(event) => setViewMode(event.target.value)}
+          >
+            <option value="xy">Full G-G</option>
+            <option value="lat">Lateral Only</option>
+            <option value="long">Longitudinal Only</option>
+          </select>
         </div>
       </div>
 
@@ -195,70 +156,104 @@ export default function GGDiagram({ samples = [], availableSignalIds = [] }) {
         <>
           <div className="gg-body">
             <div className="gg-diagram-card">
-              <svg viewBox={`0 0 ${DIAGRAM_SIZE} ${DIAGRAM_SIZE}`} className="gg-diagram">
-                <circle cx={CENTER} cy={CENTER} r={RADIUS} fill="none" stroke="rgba(255,255,255,0.24)" strokeWidth="2" />
-                <circle cx={CENTER} cy={CENTER} r={RADIUS * 0.5} fill="none" stroke="rgba(255,255,255,0.14)" strokeDasharray="4 4" />
-                <line x1={CENTER} y1={CENTER - RADIUS} x2={CENTER} y2={CENTER + RADIUS} stroke="rgba(255,255,255,0.16)" strokeWidth="1.5" />
-                <line x1={CENTER - RADIUS} y1={CENTER} x2={CENTER + RADIUS} y2={CENTER} stroke="rgba(255,255,255,0.16)" strokeWidth="1.5" />
-                <text x={CENTER} y={28} textAnchor="middle" className="gg-axis-label">
-                  {swapAxes ? '+Ay' : '+Ax'}
-                </text>
-                <text x={CENTER} y={DIAGRAM_SIZE - 16} textAnchor="middle" className="gg-axis-label">
-                  {swapAxes ? '-Ay' : '-Ax'}
-                </text>
-                <text x={20} y={CENTER + 5} textAnchor="start" className="gg-axis-label">
-                  {swapAxes ? '+Ax' : '+Ay'}
-                </text>
-                <text x={DIAGRAM_SIZE - 20} y={CENTER + 5} textAnchor="end" className="gg-axis-label">
-                  {swapAxes ? '-Ax' : '-Ay'}
-                </text>
+              {viewMode === 'xy' ? (
+                <svg viewBox={`0 0 ${DIAGRAM_SIZE} ${DIAGRAM_SIZE}`} className="gg-diagram">
+                  <circle cx={CENTER} cy={CENTER} r={RADIUS} fill="none" stroke="rgba(255,255,255,0.24)" strokeWidth="2" />
+                  <circle cx={CENTER} cy={CENTER} r={RADIUS * 0.5} fill="none" stroke="rgba(255,255,255,0.14)" strokeDasharray="4 4" />
+                  <line x1={CENTER} y1={CENTER - RADIUS} x2={CENTER} y2={CENTER + RADIUS} stroke="rgba(255,255,255,0.16)" strokeWidth="1.5" />
+                  <line x1={CENTER - RADIUS} y1={CENTER} x2={CENTER + RADIUS} y2={CENTER} stroke="rgba(255,255,255,0.16)" strokeWidth="1.5" />
+                  <text x={CENTER} y={28} textAnchor="middle" className="gg-axis-label">
+                    {swapAxes ? '+Ay' : '+Ax'}
+                  </text>
+                  <text x={CENTER} y={DIAGRAM_SIZE - 16} textAnchor="middle" className="gg-axis-label">
+                    {swapAxes ? '-Ay' : '-Ax'}
+                  </text>
+                  <text x={20} y={CENTER + 5} textAnchor="start" className="gg-axis-label">
+                    {swapAxes ? '+Ax' : '+Ay'}
+                  </text>
+                  <text x={DIAGRAM_SIZE - 20} y={CENTER + 5} textAnchor="end" className="gg-axis-label">
+                    {swapAxes ? '-Ax' : '-Ay'}
+                  </text>
 
-                {displayedTrace.slice(1).map((point, index) => {
-                  const previous = displayedTrace[index];
-                  const progress = displayedTrace.length <= 1 ? 1 : index / (displayedTrace.length - 1);
-                  const opacity = 0.16 + progress * 0.84;
-                  const x1 = CENTER + clamp(previous.x, -2, 2) * (RADIUS / 2);
-                  const y1 = CENTER - clamp(previous.y, -2, 2) * (RADIUS / 2);
-                  const x2 = CENTER + clamp(point.x, -2, 2) * (RADIUS / 2);
-                  const y2 = CENTER - clamp(point.y, -2, 2) * (RADIUS / 2);
+                  {displayedTrace.slice(1).map((point, index) => {
+                    const previous = displayedTrace[index];
+                    const progress = displayedTrace.length <= 1 ? 1 : index / (displayedTrace.length - 1);
+                    const opacity = 0.16 + progress * 0.84;
+                    const x1 = CENTER + clampPlayback(previous.x, -2, 2) * (RADIUS / 2);
+                    const y1 = CENTER - clampPlayback(previous.y, -2, 2) * (RADIUS / 2);
+                    const x2 = CENTER + clampPlayback(point.x, -2, 2) * (RADIUS / 2);
+                    const y2 = CENTER - clampPlayback(point.y, -2, 2) * (RADIUS / 2);
 
-                  return (
-                    <line
-                      key={`${previous.index}-${point.index}`}
-                      x1={x1}
-                      y1={y1}
-                      x2={x2}
-                      y2={y2}
-                      stroke={selectedSensor?.color || '#00e5ff'}
-                      strokeOpacity={opacity}
-                      strokeWidth="2.2"
-                      strokeLinecap="round"
+                    return (
+                      <line
+                        key={`${previous.index}-${point.index}`}
+                        x1={x1}
+                        y1={y1}
+                        x2={x2}
+                        y2={y2}
+                        stroke={selectedSensor?.color || '#00e5ff'}
+                        strokeOpacity={opacity}
+                        strokeWidth="2.2"
+                        strokeLinecap="round"
+                      />
+                    );
+                  })}
+
+                  {currentPoint ? (
+                    <circle
+                      cx={CENTER + clampPlayback(currentPoint.x, -2, 2) * (RADIUS / 2)}
+                      cy={CENTER - clampPlayback(currentPoint.y, -2, 2) * (RADIUS / 2)}
+                      r="5.5"
+                      fill={selectedSensor?.color || '#00e5ff'}
+                      stroke="#ffffff"
+                      strokeOpacity="0.6"
+                      strokeWidth="1"
                     />
-                  );
-                })}
-
-                {currentPoint ? (
-                  <circle
-                    cx={CENTER + clamp(currentPoint.x, -2, 2) * (RADIUS / 2)}
-                    cy={CENTER - clamp(currentPoint.y, -2, 2) * (RADIUS / 2)}
-                    r="5.5"
-                    fill={selectedSensor?.color || '#00e5ff'}
-                    stroke="#ffffff"
-                    strokeOpacity="0.6"
-                    strokeWidth="1"
-                  />
-                ) : null}
-              </svg>
+                  ) : null}
+                </svg>
+              ) : (
+                <svg viewBox="0 0 360 360" className="gg-diagram">
+                  <line x1="38" y1="180" x2="332" y2="180" stroke="rgba(255,255,255,0.18)" strokeWidth="1.5" />
+                  <line x1="38" y1="38" x2="38" y2="322" stroke="rgba(255,255,255,0.18)" strokeWidth="1.5" />
+                  <text x="44" y="28" className="gg-axis-label">
+                    {viewMode === 'lat' ? 'Lateral G' : 'Longitudinal G'}
+                  </text>
+                  {displayedTrace.slice(1).map((point, index) => {
+                    const previous = displayedTrace[index];
+                    const progress = displayedTrace.length <= 1 ? 1 : index / (displayedTrace.length - 1);
+                    const opacity = 0.16 + progress * 0.84;
+                    const x1 = 38 + ((index / Math.max(displayedTrace.length - 1, 1)) * 294);
+                    const x2 = 38 + (((index + 1) / Math.max(displayedTrace.length - 1, 1)) * 294);
+                    const prevValue = viewMode === 'lat' ? previous.rawAy : previous.rawAx;
+                    const nextValue = viewMode === 'lat' ? point.rawAy : point.rawAx;
+                    const y1 = 180 - (clampPlayback(prevValue, -2, 2) * 60);
+                    const y2 = 180 - (clampPlayback(nextValue, -2, 2) * 60);
+                    return (
+                      <line
+                        key={`${previous.index}-${point.index}`}
+                        x1={x1}
+                        y1={y1}
+                        x2={x2}
+                        y2={y2}
+                        stroke={selectedSensor?.color || '#00e5ff'}
+                        strokeOpacity={opacity}
+                        strokeWidth="2.4"
+                        strokeLinecap="round"
+                      />
+                    );
+                  })}
+                </svg>
+              )}
             </div>
 
             <div className="gg-stats">
               <div className="gg-stat-card">
                 <span>Playback Time</span>
-                <strong>{formatSeconds(playbackDurationMs)}</strong>
+                <strong>{formatPlaybackSeconds(playbackDurationMs)}</strong>
               </div>
               <div className="gg-stat-card">
                 <span>Total Duration</span>
-                <strong>{formatSeconds(totalDurationMs)}</strong>
+                <strong>{formatPlaybackSeconds(totalDurationMs)}</strong>
               </div>
               <div className="gg-stat-card">
                 <span>Current Sample</span>
@@ -266,7 +261,7 @@ export default function GGDiagram({ samples = [], availableSignalIds = [] }) {
               </div>
               <div className="gg-stat-card">
                 <span>Cursor Time</span>
-                <strong>{currentPoint ? formatTimestamp(currentPoint.timestamp) : '--'}</strong>
+                <strong>{currentPoint ? formatPlaybackTimestamp(currentPoint.timestamp) : '--'}</strong>
               </div>
               <div className="gg-stat-card">
                 <span>Lateral G</span>

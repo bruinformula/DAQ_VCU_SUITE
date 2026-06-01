@@ -2,44 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import uPlot from 'uplot';
 import 'uplot/dist/uPlot.min.css';
 import { formatSignalValue, getSignalDefinition } from '../signals';
-
-function normalizeSampleTimestamps(samples) {
-  const rawTimestamps = samples.map((sample) => (
-    typeof sample?.ts === 'number' && Number.isFinite(sample.ts) ? sample.ts : null
-  ));
-  const positiveTimestamps = rawTimestamps.filter((value) => value != null && value > 0);
-
-  if (positiveTimestamps.length === 0) {
-    return samples.map((_, index) => index * 100);
-  }
-
-  const epochLike = positiveTimestamps[0] > 1e8;
-  const fallbackMs = positiveTimestamps[0] * 1000;
-  let previousMs = fallbackMs;
-
-  return rawTimestamps.map((value, index) => {
-    let timestampMs;
-
-    if (value == null) {
-      timestampMs = index === 0 ? fallbackMs : previousMs;
-    } else if (epochLike) {
-      timestampMs = value > 0 ? value * 1000 : previousMs;
-    } else {
-      timestampMs = value * 1000;
-    }
-
-    if (!Number.isFinite(timestampMs)) {
-      timestampMs = previousMs;
-    }
-
-    if (index > 0 && timestampMs < previousMs) {
-      timestampMs = previousMs;
-    }
-
-    previousMs = timestampMs;
-    return timestampMs;
-  });
-}
+import { normalizeSampleTimestamps } from './logPlaybackUtils';
 
 function normalizeSeries(values) {
   const finiteValues = values.filter((value) => typeof value === 'number' && Number.isFinite(value));
