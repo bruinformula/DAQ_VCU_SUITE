@@ -2,8 +2,6 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { flattenTelemetryData } from './signals';
 
 const MAX_HISTORY_POINTS = 600;
-const SOCKET_IDLE_TIMEOUT_MS = 15000;
-
 function createEmptyTelemetry() {
   return {
     ts: 0,
@@ -74,6 +72,7 @@ export function useTelemetry() {
   const manualDisconnectRef = useRef(false);
   const lastMessageAtRef = useRef(0);
   const targetIpRef = useRef('');
+  const activeSessionRef = useRef(null);
 
   const telemetryRef = useRef(createEmptyTelemetry());
   const historyRef = useRef([]);
@@ -140,7 +139,7 @@ export function useTelemetry() {
 
   const scheduleReconnect = useCallback(() => {
     clearReconnectTimer();
-    if (manualDisconnectRef.current || !targetIpRef.current) {
+    if (manualDisconnectRef.current || !targetIpRef.current || activeSessionRef.current !== 'wifi') {
       setConnectionState('disconnected');
       setConnectionMessage('Telemetry link idle.');
       return;
@@ -180,7 +179,7 @@ export function useTelemetry() {
         wsRef.current = socket;
 
         socket.onopen = async () => {
-          if (generation !== connectGenerationRef.current) {
+          if (generation !== connectGenerationRef.current || activeSessionRef.current !== 'wifi') {
             socket.close();
             return;
           }
@@ -199,7 +198,7 @@ export function useTelemetry() {
         };
 
         socket.onmessage = (event) => {
-          if (generation !== connectGenerationRef.current) {
+          if (generation !== connectGenerationRef.current || activeSessionRef.current !== 'wifi') {
             return;
           }
           try {
@@ -212,7 +211,7 @@ export function useTelemetry() {
         };
 
         socket.onclose = () => {
-          if (generation !== connectGenerationRef.current) {
+          if (generation !== connectGenerationRef.current || activeSessionRef.current !== 'wifi') {
             return;
           }
           stopHealthMonitor();
@@ -231,8 +230,13 @@ export function useTelemetry() {
       if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
         return;
       }
-      if (Date.now() - lastMessageAtRef.current > SOCKET_IDLE_TIMEOUT_MS) {
-        wsRef.current.close();
+      if (Date.now() - lastMessageAtRef.current > 15000) {
+        setConnectionState((prev) => (prev === 'connected' ? 'degraded' : prev));
+        setConnectionMessage((prev) => (
+          prev.startsWith('Streaming from')
+            ? `${prev} • waiting for fresh frames`
+            : prev
+        ));
       }
     }, 1000);
   }, [stopHealthMonitor]);
@@ -244,6 +248,7 @@ export function useTelemetry() {
     }
 
     manualDisconnectRef.current = false;
+    activeSessionRef.current = 'wifi';
     clearReconnectTimer();
     stopHealthMonitor();
     closeSocket();
@@ -261,7 +266,7 @@ export function useTelemetry() {
     wsRef.current = socket;
 
     socket.onopen = async () => {
-      if (generation !== connectGenerationRef.current) {
+      if (generation !== connectGenerationRef.current || activeSessionRef.current !== 'wifi') {
         socket.close();
         return;
       }
@@ -280,7 +285,7 @@ export function useTelemetry() {
     };
 
     socket.onmessage = (event) => {
-      if (generation !== connectGenerationRef.current) {
+      if (generation !== connectGenerationRef.current || activeSessionRef.current !== 'wifi') {
         return;
       }
       try {
@@ -293,7 +298,7 @@ export function useTelemetry() {
     };
 
     socket.onclose = () => {
-      if (generation !== connectGenerationRef.current) {
+      if (generation !== connectGenerationRef.current || activeSessionRef.current !== 'wifi') {
         return;
       }
       stopHealthMonitor();
@@ -311,6 +316,7 @@ export function useTelemetry() {
 
   const disconnect = useCallback(() => {
     manualDisconnectRef.current = true;
+    activeSessionRef.current = null;
     clearReconnectTimer();
     stopHealthMonitor();
     closeSocket();
@@ -328,6 +334,7 @@ export function useTelemetry() {
     }
 
     manualDisconnectRef.current = true;
+    activeSessionRef.current = 'serial';
     clearReconnectTimer();
     stopHealthMonitor();
     closeSocket();
@@ -369,8 +376,13 @@ export function useTelemetry() {
     if (savedIp) {
       targetIpRef.current = savedIp;
       setTargetIp(savedIp);
+      setTimeout(() => {
+        if (!manualDisconnectRef.current && !wsRef.current && activeSessionRef.current !== 'serial') {
+          connect(savedIp);
+        }
+      }, 0);
     }
-  }, []);
+  }, [connect]);
 
   useEffect(() => {
     if (!window.electronAPI) {
@@ -378,6 +390,9 @@ export function useTelemetry() {
     }
 
     window.electronAPI.onSerialData((data) => {
+      if (activeSessionRef.current !== 'serial') {
+        return;
+      }
       try {
         pushTelemetry(JSON.parse(data));
         setIsConnected(true);
@@ -390,6 +405,10 @@ export function useTelemetry() {
     });
 
     window.electronAPI.onSerialDisconnected(() => {
+      if (activeSessionRef.current !== 'serial') {
+        return;
+      }
+      activeSessionRef.current = null;
       setIsConnected(false);
       setConnectionState('disconnected');
       setConnectionMessage('Serial backup disconnected.');
