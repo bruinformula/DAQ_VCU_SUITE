@@ -45,6 +45,13 @@ const DEFAULT_LOG_SIGNALS = [
   'imu[2].az',
 ];
 
+const CORNER_POSITIONS = ['FL', 'FR', 'RL', 'RR'];
+
+function formatValue(value, digits = 1) {
+  const numeric = Number(value ?? 0);
+  return Number.isFinite(numeric) ? numeric.toFixed(digits) : (0).toFixed(digits);
+}
+
 function App() {
   const {
     isConnected,
@@ -203,6 +210,34 @@ function App() {
   const cogCoords = getImuCoords(imusArray, 0);
   const frontCoords = getImuCoords(imusArray, 1);
   const rearCoords = getImuCoords(imusArray, 2);
+  const liveData = telemetryRef.current || {};
+  const sduCorners = Array.isArray(liveData.sdu) ? liveData.sdu : [];
+  const tspmuCorners = Array.isArray(liveData.tspmu) ? liveData.tspmu : [];
+  const tshmu = liveData.tshmu || { flow1: 0, flow2: 0, jitter_us: 0, error_flags: 0 };
+  const cornerCards = CORNER_POSITIONS.map((pos, index) => {
+    const sdu = sduCorners[index] || { shock: 0, brake: 0, wrpm: 0, tire: [0, 0, 0, 0] };
+    const tspmu = tspmuCorners[index] || { p1: 0, p2: 0, temps: [0, 0, 0, 0] };
+    const tireTemps = Array.isArray(sdu.tire) ? sdu.tire : [0, 0, 0, 0];
+    const pressureTemps = Array.isArray(tspmu.temps) ? tspmu.temps : [0, 0, 0, 0];
+    return {
+      pos,
+      shock: sdu.shock || 0,
+      brake: sdu.brake || 0,
+      wheel: sdu.wrpm || 0,
+      tireMax: tireTemps[0] || 0,
+      tireMin: tireTemps[1] || 0,
+      tireCtr: tireTemps[2] || 0,
+      tireAmb: tireTemps[3] || 0,
+      pressure1: tspmu.p1 || 0,
+      pressure2: tspmu.p2 || 0,
+      airTempAvg: pressureTemps.length
+        ? pressureTemps.reduce((sum, value) => sum + (Number(value) || 0), 0) / pressureTemps.length
+        : 0,
+      tempSpread: pressureTemps.length
+        ? Math.max(...pressureTemps.map(value => Number(value) || 0)) - Math.min(...pressureTemps.map(value => Number(value) || 0))
+        : 0,
+    };
+  });
 
   return (
     <div className="app-container">
@@ -323,6 +358,111 @@ function App() {
           <div className="workspace-content">
             {activeView === 'live' ? (
               <div className="dashboard-scroll">
+                <section className="chassis-atlas glass">
+                  <div className="chassis-atlas-header">
+                    <div>
+                      <span className="atlas-kicker">Chassis Atlas</span>
+                      <h3>Corner telemetry wrapped around the car</h3>
+                      <p>SDU suspension and brake signals stay attached to each wheel, with TSPMU pressure and temperature context riding alongside them.</p>
+                    </div>
+                    <div className="atlas-center-readout">
+                      <div className="atlas-center-pill">
+                        <span>TSHMU Flow 1</span>
+                        <strong>{formatValue(tshmu.flow1, 1)} L/min</strong>
+                      </div>
+                      <div className="atlas-center-pill">
+                        <span>TSHMU Flow 2</span>
+                        <strong>{formatValue(tshmu.flow2, 1)} L/min</strong>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="chassis-atlas-grid">
+                    {cornerCards.map((corner) => (
+                      <article
+                        key={corner.pos}
+                        className={`corner-card corner-card-${corner.pos.toLowerCase()}`}
+                      >
+                        <div className="corner-card-header">
+                          <div>
+                            <span className="corner-tag">{corner.pos}</span>
+                            <h4>{corner.pos === 'FL' ? 'Front Left' : corner.pos === 'FR' ? 'Front Right' : corner.pos === 'RL' ? 'Rear Left' : 'Rear Right'}</h4>
+                          </div>
+                          <div className="corner-wheel-speed">
+                            <span>Wheel</span>
+                            <strong>{Math.round(corner.wheel)} RPM</strong>
+                          </div>
+                        </div>
+
+                        <div className="corner-card-metrics">
+                          <div className="corner-metric">
+                            <span>Shock</span>
+                            <strong>{formatValue(corner.shock, 2)} mm</strong>
+                          </div>
+                          <div className="corner-metric">
+                            <span>Brake</span>
+                            <strong>{formatValue(corner.brake, 1)} °C</strong>
+                          </div>
+                          <div className="corner-metric">
+                            <span>Tire Max</span>
+                            <strong>{formatValue(corner.tireMax, 0)} °C</strong>
+                          </div>
+                          <div className="corner-metric">
+                            <span>Tire Ctr</span>
+                            <strong>{formatValue(corner.tireCtr, 0)} °C</strong>
+                          </div>
+                        </div>
+
+                        <div className="corner-card-band">
+                          <div className="corner-band-title">Pressure monitor</div>
+                          <div className="corner-band-values">
+                            <span>P1 {formatValue(corner.pressure1, 2)}</span>
+                            <span>P2 {formatValue(corner.pressure2, 2)}</span>
+                            <span>dT {formatValue(corner.tempSpread, 1)} °C</span>
+                          </div>
+                        </div>
+
+                        <div className="corner-card-footer">
+                          <span>Ambient {formatValue(corner.tireAmb, 0)} °C</span>
+                          <span>Air Avg {formatValue(corner.airTempAvg, 1)} °C</span>
+                          <span>Min {formatValue(corner.tireMin, 0)} °C</span>
+                        </div>
+                      </article>
+                    ))}
+
+                    <div className="car-silhouette-shell">
+                      <div className="car-silhouette-glow" />
+                      <div className="car-silhouette">
+                        <div className="car-nose" />
+                        <div className="car-cockpit" />
+                        <div className="car-body-core" />
+                        <div className="car-rear" />
+                        <div className="car-wing car-wing-front" />
+                        <div className="car-wing car-wing-rear" />
+                        <div className="car-wheel car-wheel-fl" />
+                        <div className="car-wheel car-wheel-fr" />
+                        <div className="car-wheel car-wheel-rl" />
+                        <div className="car-wheel car-wheel-rr" />
+                      </div>
+
+                      <div className="car-overlay">
+                        <div className="car-overlay-pill">
+                          <span>Live bus</span>
+                          <strong>{isConnected ? 'LOCKED' : 'SEARCHING'}</strong>
+                        </div>
+                        <div className="car-overlay-pill">
+                          <span>Parse</span>
+                          <strong>{liveData?.stats?.parsed || 0}</strong>
+                        </div>
+                        <div className="car-overlay-pill">
+                          <span>Errors</span>
+                          <strong>{liveData?.stats?.errors || 0}</strong>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
                 <div className="plot-grid">
                   {liveChartGroups.map((group) => (
                     <SignalPlot

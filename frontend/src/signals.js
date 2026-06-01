@@ -368,6 +368,32 @@ export const signalGroups = [
   });
 });
 
+['FL', 'FR', 'RL', 'RR'].forEach((pos, idx) => {
+  signalGroups.push({
+    id: `tspmu_${idx}`,
+    name: `TSPMU ${pos}`,
+    signals: [
+      makeSignal(`tspmu[${idx}].p1`, `${pos} Pressure 1`, 'Pa', '#ffd670'),
+      makeSignal(`tspmu[${idx}].p2`, `${pos} Pressure 2`, 'Pa', '#ffb800'),
+      makeSignal(`tspmu[${idx}].temps[0]`, `${pos} Temp 1`, '°C', '#70d6ff'),
+      makeSignal(`tspmu[${idx}].temps[1]`, `${pos} Temp 2`, '°C', '#9bf6ff'),
+      makeSignal(`tspmu[${idx}].temps[2]`, `${pos} Temp 3`, '°C', '#8cffc1'),
+      makeSignal(`tspmu[${idx}].temps[3]`, `${pos} Temp 4`, '°C', '#caffbf'),
+    ],
+  });
+});
+
+signalGroups.push({
+  id: 'tshmu',
+  name: 'TSHMU Flow',
+  signals: [
+    makeSignal('tshmu.flow1', 'Flow 1', 'L/min', '#00e5ff'),
+    makeSignal('tshmu.flow2', 'Flow 2', 'L/min', '#00ff7f'),
+    makeSignal('tshmu.jitter_us', 'Flow Jitter', 'us', '#ffb800', { precision: 0 }),
+    makeSignal('tshmu.error_flags', 'Flow Error Flags', 'bits', '#ff70a6', { precision: 0 }),
+  ],
+});
+
 export const ALL_SIGNALS = signalGroups.flatMap(group => group.signals);
 export const SIGNAL_MAP = Object.fromEntries(ALL_SIGNALS.map(signal => [signal.id, signal]));
 
@@ -433,6 +459,8 @@ export function flattenTelemetryData(data) {
   walk(data?.vcu || {}, 'vcu');
   walk(data?.fusebox || {}, 'fusebox');
   walk(data?.sdu || {}, 'sdu');
+  walk(data?.tspmu || {}, 'tspmu');
+  walk(data?.tshmu || {}, 'tshmu');
   flat.ts = data?.ts;
   return flat;
 }

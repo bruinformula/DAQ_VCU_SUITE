@@ -165,6 +165,29 @@ class TelemetryState:
             for _ in range(4)
         ]
 
+        # TSPMU boards [0-3] = FL, FR, RL, RR — latest values only
+        self.tspmu = [
+            {
+                'pressure1': 0.0,
+                'pressure2': 0.0,
+                'temp1': 0.0,
+                'temp2': 0.0,
+                'temp3': 0.0,
+                'temp4': 0.0,
+            }
+            for _ in range(4)
+        ]
+
+        # TSHMU flow frame(s). The current firmware source explicitly defines
+        # board 0 on CAN ID 0x102.
+        self.tshmu = {
+            'flow1': 0.0,
+            'flow2': 0.0,
+            'jitter_us': 0,
+            'error_flags': 0,
+            'base_timestamp': 0,
+        }
+
         # Logging state
         self.is_logging: bool = False
         self.log_signal_ids: list[str] = []
@@ -363,20 +386,39 @@ class TelemetryState:
         if decoded is None or decoded.board_index >= 4:
             return
 
-        board = self.sdu[decoded.board_index]
-        if decoded.sensor_type == 'shock_pot' and decoded.latest:
-            board['shock_mm'] = decoded.latest.get('shock_mm', board['shock_mm'])
-        elif decoded.sensor_type == 'brake_temp' and decoded.latest:
-            board['brake_c'] = decoded.latest.get('brake_c', board['brake_c'])
-        elif decoded.sensor_type == 'wheel_speed' and decoded.latest:
-            board['wheel_rpm'] = decoded.latest.get('wheel_rpm', board['wheel_rpm'])
-        elif decoded.sensor_type == 'tire_temp' and decoded.latest:
-            board['tire_max_c'] = decoded.latest.get('max_c', board['tire_max_c'])
-            board['tire_min_c'] = decoded.latest.get('min_c', board['tire_min_c'])
-            board['tire_ctr_c'] = decoded.latest.get('center_c', board['tire_ctr_c'])
-            board['tire_amb_c'] = decoded.latest.get('ambient_c', board['tire_amb_c'])
-        elif decoded.sensor_type == 'strain_gauge' and decoded.latest:
-            board['strain_mv'] = decoded.latest.get('channels_mv', board['strain_mv'])
+        if decoded.board_type == BOARD_TYPE_SDU:
+            board = self.sdu[decoded.board_index]
+            if decoded.sensor_type == 'shock_pot' and decoded.latest:
+                board['shock_mm'] = decoded.latest.get('shock_mm', board['shock_mm'])
+            elif decoded.sensor_type == 'brake_temp' and decoded.latest:
+                board['brake_c'] = decoded.latest.get('brake_c', board['brake_c'])
+            elif decoded.sensor_type == 'wheel_speed' and decoded.latest:
+                board['wheel_rpm'] = decoded.latest.get('wheel_rpm', board['wheel_rpm'])
+            elif decoded.sensor_type == 'tire_temp' and decoded.latest:
+                board['tire_max_c'] = decoded.latest.get('max_c', board['tire_max_c'])
+                board['tire_min_c'] = decoded.latest.get('min_c', board['tire_min_c'])
+                board['tire_ctr_c'] = decoded.latest.get('center_c', board['tire_ctr_c'])
+                board['tire_amb_c'] = decoded.latest.get('ambient_c', board['tire_amb_c'])
+            elif decoded.sensor_type == 'strain_gauge' and decoded.latest:
+                board['strain_mv'] = decoded.latest.get('channels_mv', board['strain_mv'])
+        elif decoded.board_type == BOARD_TYPE_TSPMU:
+            board = self.tspmu[decoded.board_index]
+            if decoded.sensor_type == 'tspmu_pressure' and decoded.latest:
+                board['pressure1'] = decoded.latest.get('pressure1', board['pressure1'])
+                board['pressure2'] = decoded.latest.get('pressure2', board['pressure2'])
+            elif decoded.sensor_type == 'tspmu_temperature' and decoded.latest:
+                board['temp1'] = decoded.latest.get('temp1', board['temp1'])
+                board['temp2'] = decoded.latest.get('temp2', board['temp2'])
+                board['temp3'] = decoded.latest.get('temp3', board['temp3'])
+                board['temp4'] = decoded.latest.get('temp4', board['temp4'])
+
+    def apply_tshmu_frame(self, decoded: dict[str, int | float]) -> None:
+        """Apply the current TSHMU flow frame layout from mk11-tshmu firmware."""
+        self.tshmu['flow1'] = float(decoded.get('flow1', self.tshmu['flow1']))
+        self.tshmu['flow2'] = float(decoded.get('flow2', self.tshmu['flow2']))
+        self.tshmu['jitter_us'] = int(decoded.get('jitter_us', self.tshmu['jitter_us']))
+        self.tshmu['error_flags'] = int(decoded.get('error_flags', self.tshmu['error_flags']))
+        self.tshmu['base_timestamp'] = int(decoded.get('base_timestamp', self.tshmu['base_timestamp']))
 
     def to_broadcast_dict(self) -> dict:
         """Construct the JSON payload for WebSocket broadcast."""
@@ -470,6 +512,26 @@ class TelemetryState:
                 }
                 for i, b in enumerate(self.sdu)
             ],
+            'tspmu': [
+                {
+                    'pos': ['FL', 'FR', 'RL', 'RR'][i],
+                    'p1': round(b['pressure1'], 2),
+                    'p2': round(b['pressure2'], 2),
+                    'temps': [
+                        round(b['temp1'], 1),
+                        round(b['temp2'], 1),
+                        round(b['temp3'], 1),
+                        round(b['temp4'], 1),
+                    ],
+                }
+                for i, b in enumerate(self.tspmu)
+            ],
+            'tshmu': {
+                'flow1': round(self.tshmu['flow1'], 1),
+                'flow2': round(self.tshmu['flow2'], 1),
+                'jitter_us': self.tshmu['jitter_us'],
+                'error_flags': self.tshmu['error_flags'],
+            },
             'log': self.is_logging,
             'log_file': self.active_log_filename,
             'log_signal_ids': self.log_signal_ids,
@@ -488,6 +550,8 @@ class TelemetryState:
         flatten_value_map(payload.get('vcu', {}), 'vcu', flat)
         flatten_value_map(payload.get('fusebox', {}), 'fusebox', flat)
         flatten_value_map(payload.get('sdu', {}), 'sdu', flat)
+        flatten_value_map(payload.get('tspmu', {}), 'tspmu', flat)
+        flatten_value_map(payload.get('tshmu', {}), 'tshmu', flat)
         flat['ts'] = payload['ts']
         return flat
 
@@ -616,12 +680,47 @@ def extract_binary_can_frames(buffer: bytes) -> tuple[list[tuple[int, bytes]], b
     return frames, b'', errors
 
 
+def decode_tshmu_frame(can_id: int, data: bytes) -> Optional[dict[str, int | float]]:
+    """
+    Decode the current mk11-tshmu DualFlowFDFrame_t layout.
+
+    Source of truth:
+      /Users/oreoturkey/Documents/telemetry_project/mk11-tshmu/Core/Src/main.c
+
+    The checked-in firmware currently defines a single board-0 flow packet on
+    CAN ID 0x102 with:
+      bytes 0-3   base_timestamp
+      bytes 4-5   error_flags
+      bytes 6-10  first sample: flow1_u16, flow2_u16, jitter_s8
+    """
+    if can_id != 0x102 or len(data) < 11:
+        return None
+
+    flow1_raw = data[6] | (data[7] << 8)
+    flow2_raw = data[8] | (data[9] << 8)
+    jitter_raw = data[10]
+    jitter_us = jitter_raw - 256 if jitter_raw > 127 else jitter_raw
+
+    return {
+        'base_timestamp': int.from_bytes(data[0:4], 'little'),
+        'error_flags': data[4] | (data[5] << 8),
+        'flow1': flow1_raw / 10.0,
+        'flow2': flow2_raw / 10.0,
+        'jitter_us': jitter_us,
+    }
+
+
 def _process_can_payload(can_id: int, data: bytes) -> None:
     """Route a CAN ID + payload pair to the correct decoder."""
     if len(data) == 64:
         sdu_info = parse_sdu_id(can_id)
         if sdu_info is not None:
             STATE.apply_sdu_frame(can_id, list(data))
+            return
+
+        tshmu = decode_tshmu_frame(can_id, data)
+        if tshmu is not None:
+            STATE.apply_tshmu_frame(tshmu)
             return
 
     if 0x4F5 <= can_id <= 0x4FA:

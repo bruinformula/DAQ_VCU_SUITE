@@ -518,6 +518,360 @@ body {
   padding-right: 4px;
 }
 
+.chassis-atlas {
+  border-radius: 24px;
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  background:
+    radial-gradient(circle at 15% 15%, rgba(0, 229, 255, 0.12), transparent 28%),
+    radial-gradient(circle at 85% 18%, rgba(255, 184, 0, 0.12), transparent 24%),
+    linear-gradient(180deg, rgba(17, 19, 24, 0.96), rgba(10, 12, 16, 0.96));
+}
+
+.chassis-atlas-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.atlas-kicker {
+  display: inline-flex;
+  margin-bottom: 8px;
+  color: var(--accent-primary);
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.chassis-atlas-header h3 {
+  font-size: 1.18rem;
+  margin-bottom: 6px;
+}
+
+.chassis-atlas-header p {
+  color: var(--text-secondary);
+  font-size: 0.84rem;
+  line-height: 1.5;
+  max-width: 620px;
+}
+
+.atlas-center-readout {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.atlas-center-pill {
+  min-width: 150px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.atlas-center-pill span {
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.atlas-center-pill strong {
+  color: var(--text-primary);
+  font-size: 1rem;
+  font-family: var(--font-mono);
+}
+
+.chassis-atlas-grid {
+  display: grid;
+  grid-template-columns: minmax(210px, 1fr) minmax(280px, 420px) minmax(210px, 1fr);
+  grid-template-areas:
+    "fl car fr"
+    "rl car rr";
+  gap: 18px 22px;
+  align-items: stretch;
+}
+
+.corner-card {
+  position: relative;
+  border-radius: 22px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 230px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02)),
+    rgba(8, 11, 16, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.corner-card::after {
+  content: "";
+  position: absolute;
+  width: 56px;
+  height: 2px;
+  top: 50%;
+  background: linear-gradient(90deg, rgba(0, 229, 255, 0.8), rgba(0, 229, 255, 0));
+  opacity: 0.8;
+}
+
+.corner-card-fl { grid-area: fl; }
+.corner-card-fr { grid-area: fr; }
+.corner-card-rl { grid-area: rl; }
+.corner-card-rr { grid-area: rr; }
+
+.corner-card-fl::after,
+.corner-card-rl::after {
+  right: -36px;
+}
+
+.corner-card-fr::after,
+.corner-card-rr::after {
+  left: -36px;
+  transform: scaleX(-1);
+}
+
+.corner-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.corner-tag {
+  display: inline-flex;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(0, 229, 255, 0.12);
+  color: var(--accent-primary);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.corner-card-header h4 {
+  font-size: 0.98rem;
+}
+
+.corner-wheel-speed {
+  text-align: right;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.corner-wheel-speed span,
+.corner-metric span,
+.corner-card-footer span,
+.corner-band-title {
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  font-family: var(--font-mono);
+  letter-spacing: 0.03em;
+}
+
+.corner-wheel-speed strong,
+.corner-metric strong {
+  color: var(--text-primary);
+  font-size: 0.96rem;
+  font-family: var(--font-mono);
+}
+
+.corner-card-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.corner-metric {
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.corner-card-band {
+  border-radius: 16px;
+  padding: 12px 14px;
+  background: linear-gradient(90deg, rgba(255, 184, 0, 0.16), rgba(255, 42, 77, 0.08));
+  border: 1px solid rgba(255, 184, 0, 0.18);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.corner-band-values {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+}
+
+.corner-card-footer {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  margin-top: auto;
+}
+
+.car-silhouette-shell {
+  grid-area: car;
+  position: relative;
+  min-height: 490px;
+  border-radius: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(0, 229, 255, 0.14), transparent 30%),
+    radial-gradient(circle at 50% 15%, rgba(255, 184, 0, 0.08), transparent 24%),
+    linear-gradient(180deg, rgba(10, 16, 22, 0.88), rgba(6, 9, 14, 0.98));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.car-silhouette-glow {
+  position: absolute;
+  inset: 18% 24%;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(0, 229, 255, 0.18), transparent 70%);
+  filter: blur(14px);
+}
+
+.car-silhouette {
+  position: relative;
+  width: 240px;
+  height: 420px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.car-body-core,
+.car-cockpit,
+.car-nose,
+.car-rear,
+.car-wing,
+.car-wheel {
+  position: absolute;
+}
+
+.car-body-core {
+  inset: 88px 82px;
+  border-radius: 110px;
+  background: linear-gradient(180deg, #fbfcff, #bac5d6 54%, #5d6777);
+  box-shadow:
+    inset 0 0 0 2px rgba(255, 255, 255, 0.46),
+    0 20px 36px rgba(0, 0, 0, 0.42);
+}
+
+.car-cockpit {
+  top: 108px;
+  width: 84px;
+  height: 132px;
+  border-radius: 48px 48px 42px 42px;
+  background: linear-gradient(180deg, rgba(9, 12, 16, 0.95), rgba(55, 63, 73, 0.88));
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.08);
+}
+
+.car-nose {
+  top: 36px;
+  width: 58px;
+  height: 110px;
+  border-radius: 40px 40px 18px 18px;
+  background: linear-gradient(180deg, #dfe8f2, #8d99aa);
+}
+
+.car-rear {
+  bottom: 32px;
+  width: 92px;
+  height: 88px;
+  border-radius: 28px 28px 42px 42px;
+  background: linear-gradient(180deg, #adb9c8, #5a6471);
+}
+
+.car-wing {
+  width: 168px;
+  height: 18px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(0, 229, 255, 0.75), rgba(255, 255, 255, 0.88), rgba(0, 229, 255, 0.75));
+  box-shadow: 0 0 18px rgba(0, 229, 255, 0.16);
+}
+
+.car-wing-front { top: 18px; }
+.car-wing-rear { bottom: 8px; width: 194px; }
+
+.car-wheel {
+  width: 38px;
+  height: 102px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, #090b0f, #343842 48%, #090b0f);
+  box-shadow:
+    inset 0 0 0 1px rgba(255,255,255,0.06),
+    0 10px 18px rgba(0, 0, 0, 0.35);
+}
+
+.car-wheel-fl { top: 72px; left: 10px; }
+.car-wheel-fr { top: 72px; right: 10px; }
+.car-wheel-rl { bottom: 88px; left: 10px; }
+.car-wheel-rr { bottom: 88px; right: 10px; }
+
+.car-overlay {
+  position: absolute;
+  bottom: 18px;
+  left: 18px;
+  right: 18px;
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.car-overlay-pill {
+  min-width: 108px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: center;
+}
+
+.car-overlay-pill span {
+  color: var(--text-secondary);
+  font-size: 0.68rem;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.car-overlay-pill strong {
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  font-family: var(--font-mono);
+}
+
 .plot-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
@@ -1070,11 +1424,55 @@ body {
     min-width: 320px;
   }
 
+  .chassis-atlas-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-areas:
+      "car car"
+      "fl fr"
+      "rl rr";
+  }
+
+  .car-silhouette-shell {
+    min-height: 380px;
+  }
+
+  .corner-card::after {
+    display: none;
+  }
+
   .plot-grid {
     grid-template-columns: 1fr;
   }
 
   .logs-view {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 900px) {
+  .chassis-atlas {
+    padding: 18px;
+  }
+
+  .chassis-atlas-grid {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "car"
+      "fl"
+      "fr"
+      "rl"
+      "rr";
+  }
+
+  .car-silhouette-shell {
+    min-height: 320px;
+  }
+
+  .car-silhouette {
+    transform: scale(0.82);
+  }
+
+  .corner-card-metrics {
+    grid-template-columns: 1fr 1fr;
   }
 }
