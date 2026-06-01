@@ -106,11 +106,13 @@ export default function GPSPlayback({ samples = [], availableSignalIds = [] }) {
   const mapNodeRef = useRef(null);
   const markerRef = useRef(null);
   const pointsRef = useRef([]);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [playbackIndex, setPlaybackIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [selectedSignalId, setSelectedSignalId] = useState('sdu[0].shock');
   const [selectedSignalIds, setSelectedSignalIds] = useState(['sdu[0].shock']);
   const [traceColors, setTraceColors] = useState({});
+  const [mapLayout, setMapLayout] = useState('balanced');
 
   const signalOptions = useMemo(() => (
     availableSignalIds.filter((signalId) => signalId !== 'ts')
@@ -185,6 +187,17 @@ export default function GPSPlayback({ samples = [], availableSignalIds = [] }) {
       setPlaybackIndex(Math.max(points.length - 1, 0));
     }
   }, [playbackIndex, points.length]);
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      const fullscreenNow = document.fullscreenElement === shellRef.current;
+      setIsFullscreen(fullscreenNow);
+      window.setTimeout(() => mapRef.current?.resize(), 120);
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
 
   useEffect(() => {
     if (!isPlaying || points.length < 2) return undefined;
@@ -329,7 +342,10 @@ export default function GPSPlayback({ samples = [], availableSignalIds = [] }) {
   };
 
   return (
-    <section ref={shellRef} className="gps-playback-shell glass">
+    <section
+      ref={shellRef}
+      className={`gps-playback-shell glass gps-playback-layout-${mapLayout}`}
+    >
       <div className="gps-playback-header">
         <div>
           <h3>GPS Replay Studio</h3>
@@ -377,8 +393,20 @@ export default function GPSPlayback({ samples = [], availableSignalIds = [] }) {
             className="plot-tool-btn"
             onClick={toggleFullscreen}
           >
-            Full Screen
+            {isFullscreen ? 'Exit Full Screen' : 'Full Screen'}
           </button>
+          <select
+            className="plot-overlay-select gps-layout-select"
+            value={mapLayout}
+            onChange={(event) => {
+              setMapLayout(event.target.value);
+              window.setTimeout(() => mapRef.current?.resize(), 80);
+            }}
+          >
+            <option value="track">Track Focus</option>
+            <option value="balanced">Balanced</option>
+            <option value="data">Data Focus</option>
+          </select>
         </div>
       </div>
 
@@ -511,7 +539,7 @@ export default function GPSPlayback({ samples = [], availableSignalIds = [] }) {
         </div>
       </div>
 
-      <div className="gg-slider-row">
+      <div className="gg-slider-row gps-playback-slider-row">
         <input
           className="gg-slider"
           type="range"
