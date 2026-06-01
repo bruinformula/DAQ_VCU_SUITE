@@ -36,6 +36,18 @@ from slcan_parser import parse_slcan_frame, SlcanFrame
 from dbc_decoder import decode_can_frame
 from sdu_decoder import decode_sdu_frame, parse_sdu_id, BOARD_TYPE_SDU, BOARD_TYPE_TSPMU
 
+SDU_STALE_LIMITS = {
+    'shock_mm': 0.5,
+    'brake_c': 4.0,
+    'wheel_rpm': 4.0,
+    'tire': 3.0,
+}
+FUSEBOX_STALE_LIMITS = {
+    'state': 3.0,
+    'power': 3.0,
+    'ambient_temp': 3.0,
+}
+
 
 def normalize_signal_name(name: str, prefix: str) -> str:
     """Convert DBC signal names into frontend-safe lowercase keys."""
@@ -164,6 +176,10 @@ class TelemetryState:
              'strain_mv': [0]*6}
             for _ in range(4)
         ]
+        self.sdu_meta = [
+            {'shock_mm': 0.0, 'brake_c': 0.0, 'wheel_rpm': 0.0, 'tire': 0.0, 'strain_mv': 0.0}
+            for _ in range(4)
+        ]
 
         # TSPMU boards [0-3] = FL, FR, RL, RR — latest values only
         self.tspmu = [
@@ -175,6 +191,10 @@ class TelemetryState:
                 'temp3': 0.0,
                 'temp4': 0.0,
             }
+            for _ in range(4)
+        ]
+        self.tspmu_meta = [
+            {'pressure': 0.0, 'temperature': 0.0}
             for _ in range(4)
         ]
 
@@ -199,6 +219,8 @@ class TelemetryState:
         self.inv_cmd: dict[str, float | int | bool] = {}
         self.vcu_all: dict[str, float | int | bool] = {}
         self.fusebox_all: dict[str, float | int | bool] = {}
+        self.fusebox_meta = {'state': 0.0, 'power': 0.0, 'ambient_temp': 0.0}
+        self.can_activity: dict[int, dict[str, float | int]] = {}
 
         # Frame counters
         self.frames_parsed: int = 0
@@ -220,6 +242,16 @@ class TelemetryState:
         elif can_id in (1264, 1265, 1266):
             for name, value in signals.items():
                 self.fusebox_all[normalize_signal_name(name, '')] = value
+
+    def record_can_activity(self, can_id: int, data_len: int) -> None:
+        now = time.time()
+        activity = self.can_activity.get(can_id)
+        if activity is None:
+            activity = {'count': 0, 'last_seen': now, 'data_len': data_len}
+            self.can_activity[can_id] = activity
+        activity['count'] = int(activity['count']) + 1
+        activity['last_seen'] = now
+        activity['data_len'] = data_len
 
     def apply_dbc_signals(self, can_id: int, signals: dict[str, float]) -> None:
         """Apply decoded DBC signals to the state object."""
@@ -321,13 +353,16 @@ class TelemetryState:
             self.fusebox_battery_v = signals.get('Battery_Voltage', self.fusebox_battery_v)
             self.fusebox_lvb_soc = signals.get('LVB_SOC', self.fusebox_lvb_soc)
             self.fusebox_dcdc_temp = signals.get('DCDC_Temp', self.fusebox_dcdc_temp)
+            self.fusebox_meta['state'] = time.time()
         elif can_id == 1265:
             self.fusebox_accy_fan_power = signals.get('Accy_Fan_Power', self.fusebox_accy_fan_power)
             self.fusebox_tractive_fan_power = signals.get('Tractive_Fan_Power', self.fusebox_tractive_fan_power)
             self.fusebox_tractive_pumps_power = signals.get('Tractive_Pumps_Power', self.fusebox_tractive_pumps_power)
             self.fusebox_charging_power = signals.get('Charging_Power', self.fusebox_charging_power)
+            self.fusebox_meta['power'] = time.time()
         elif can_id == 1266:
             self.fusebox_ambient_temp = signals.get('Ambient_Temp', self.fusebox_ambient_temp)
+            self.fusebox_meta['ambient_temp'] = time.time()
 
     def apply_imu_raw_frame(self, can_id: int, data: bytes) -> None:
         """Decode IMU frames directly using struct unpack."""
@@ -385,32 +420,42 @@ class TelemetryState:
         decoded = decode_sdu_frame(can_id, data)
         if decoded is None or decoded.board_index >= 4:
             return
+        now = time.time()
 
         if decoded.board_type == BOARD_TYPE_SDU:
             board = self.sdu[decoded.board_index]
+            meta = self.sdu_meta[decoded.board_index]
             if decoded.sensor_type == 'shock_pot' and decoded.latest:
                 board['shock_mm'] = decoded.latest.get('shock_mm', board['shock_mm'])
+                meta['shock_mm'] = now
             elif decoded.sensor_type == 'brake_temp' and decoded.latest:
                 board['brake_c'] = decoded.latest.get('brake_c', board['brake_c'])
+                meta['brake_c'] = now
             elif decoded.sensor_type == 'wheel_speed' and decoded.latest:
                 board['wheel_rpm'] = decoded.latest.get('wheel_rpm', board['wheel_rpm'])
+                meta['wheel_rpm'] = now
             elif decoded.sensor_type == 'tire_temp' and decoded.latest:
                 board['tire_max_c'] = decoded.latest.get('max_c', board['tire_max_c'])
                 board['tire_min_c'] = decoded.latest.get('min_c', board['tire_min_c'])
                 board['tire_ctr_c'] = decoded.latest.get('center_c', board['tire_ctr_c'])
                 board['tire_amb_c'] = decoded.latest.get('ambient_c', board['tire_amb_c'])
+                meta['tire'] = now
             elif decoded.sensor_type == 'strain_gauge' and decoded.latest:
                 board['strain_mv'] = decoded.latest.get('channels_mv', board['strain_mv'])
+                meta['strain_mv'] = now
         elif decoded.board_type == BOARD_TYPE_TSPMU:
             board = self.tspmu[decoded.board_index]
+            meta = self.tspmu_meta[decoded.board_index]
             if decoded.sensor_type == 'tspmu_pressure' and decoded.latest:
                 board['pressure1'] = decoded.latest.get('pressure1', board['pressure1'])
                 board['pressure2'] = decoded.latest.get('pressure2', board['pressure2'])
+                meta['pressure'] = now
             elif decoded.sensor_type == 'tspmu_temperature' and decoded.latest:
                 board['temp1'] = decoded.latest.get('temp1', board['temp1'])
                 board['temp2'] = decoded.latest.get('temp2', board['temp2'])
                 board['temp3'] = decoded.latest.get('temp3', board['temp3'])
                 board['temp4'] = decoded.latest.get('temp4', board['temp4'])
+                meta['temperature'] = now
 
     def apply_tshmu_frame(self, decoded: dict[str, int | float]) -> None:
         """Apply the current TSHMU flow frame layout from mk11-tshmu firmware."""
@@ -422,6 +467,7 @@ class TelemetryState:
 
     def to_broadcast_dict(self) -> dict:
         """Construct the JSON payload for WebSocket broadcast."""
+        now = time.time()
         return {
             'ts': round(self.timestamp, 3),
             'gps': {
@@ -501,6 +547,10 @@ class TelemetryState:
                 'charging_power': round(self.fusebox_charging_power, 1),
                 'ambient_temp': round(self.fusebox_ambient_temp, 1),
                 'all': dict(self.fusebox_all),
+                'valid': {
+                    key: (now - ts) <= FUSEBOX_STALE_LIMITS[key]
+                    for key, ts in self.fusebox_meta.items()
+                },
             },
             'sdu': [
                 {
@@ -509,6 +559,10 @@ class TelemetryState:
                     'brake': round(b['brake_c'], 1),
                     'wrpm': round(b['wheel_rpm'], 1),
                     'tire': [b['tire_max_c'], b['tire_min_c'], b['tire_ctr_c'], b['tire_amb_c']],
+                    'valid': {
+                        key: (now - self.sdu_meta[i][key]) <= SDU_STALE_LIMITS[key]
+                        for key in ('shock_mm', 'brake_c', 'wheel_rpm', 'tire')
+                    },
                 }
                 for i, b in enumerate(self.sdu)
             ],
@@ -715,18 +769,22 @@ def _process_can_payload(can_id: int, data: bytes) -> None:
     if len(data) == 64:
         sdu_info = parse_sdu_id(can_id)
         if sdu_info is not None:
+            STATE.record_can_activity(can_id, len(data))
             STATE.apply_sdu_frame(can_id, list(data))
             return
 
         tshmu = decode_tshmu_frame(can_id, data)
         if tshmu is not None:
+            STATE.record_can_activity(can_id, len(data))
             STATE.apply_tshmu_frame(tshmu)
             return
 
     if 0x4F5 <= can_id <= 0x4FA:
+        STATE.record_can_activity(can_id, len(data))
         STATE.apply_imu_raw_frame(can_id, data)
         return
 
+    STATE.record_can_activity(can_id, len(data))
     signals = decode_can_frame(can_id, data)
     if signals is not None:
         STATE.apply_dbc_signals(can_id, signals)
@@ -1271,6 +1329,28 @@ async def get_status():
         "frames_errors": STATE.frames_errors,
         "buffer_size": len(HISTORY_BUFFER),
         "connected_clients": len(active_connections),
+    })
+
+
+@app.get("/api/debug/can")
+async def get_can_debug():
+    now = time.time()
+    recent = sorted(
+        (
+            {
+                "can_id": can_id,
+                "hex": f"0x{can_id:03X}",
+                "count": int(info["count"]),
+                "data_len": int(info["data_len"]),
+                "last_seen_s_ago": round(now - float(info["last_seen"]), 3),
+            }
+            for can_id, info in STATE.can_activity.items()
+        ),
+        key=lambda item: item["last_seen_s_ago"],
+    )
+    return JSONResponse({
+        "recent_ids": recent[:64],
+        "fusebox_valid": STATE.to_broadcast_dict()["fusebox"]["valid"],
     })
 
 

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { flattenTelemetryData } from './signals';
 
 const MAX_HISTORY_POINTS = 600;
-const SOCKET_IDLE_TIMEOUT_MS = 3500;
+const SOCKET_IDLE_TIMEOUT_MS = 15000;
 
 function createEmptyTelemetry() {
   return {

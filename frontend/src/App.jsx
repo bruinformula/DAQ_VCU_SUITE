@@ -48,8 +48,11 @@ const DEFAULT_LOG_SIGNALS = [
 const CORNER_POSITIONS = ['FL', 'FR', 'RL', 'RR'];
 
 function formatValue(value, digits = 1) {
-  const numeric = Number(value ?? 0);
-  return Number.isFinite(numeric) ? numeric.toFixed(digits) : (0).toFixed(digits);
+  if (value === undefined || value === null || Number.isNaN(Number(value))) {
+    return '--';
+  }
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric.toFixed(digits) : '--';
 }
 
 function App() {
@@ -217,15 +220,17 @@ function App() {
   const cornerCards = CORNER_POSITIONS.map((pos, index) => {
     const sdu = sduCorners[index] || { shock: 0, brake: 0, wrpm: 0, tire: [0, 0, 0, 0] };
     const tireTemps = Array.isArray(sdu.tire) ? sdu.tire : [0, 0, 0, 0];
+    const valid = sdu.valid || {};
     return {
       pos,
-      shock: sdu.shock || 0,
-      brake: sdu.brake || 0,
-      wheel: sdu.wrpm || 0,
-      tireMax: tireTemps[0] || 0,
-      tireMin: tireTemps[1] || 0,
-      tireCtr: tireTemps[2] || 0,
-      tireAmb: tireTemps[3] || 0,
+      shock: valid.shock_mm ? sdu.shock : null,
+      brake: valid.brake_c ? sdu.brake : null,
+      wheel: valid.wheel_rpm ? sdu.wrpm : null,
+      tireMax: valid.tire ? tireTemps[0] : null,
+      tireMin: valid.tire ? tireTemps[1] : null,
+      tireCtr: valid.tire ? tireTemps[2] : null,
+      tireAmb: valid.tire ? tireTemps[3] : null,
+      valid,
     };
   });
   const tspmuBoards = tspmuCorners
