@@ -32,10 +32,10 @@ const STREET_STYLE = {
       minzoom: 0,
       maxzoom: 19,
       paint: {
-        'raster-saturation': -0.15,
-        'raster-contrast': 0.08,
-        'raster-brightness-min': 0.08,
-        'raster-brightness-max': 0.96,
+        'raster-saturation': -0.42,
+        'raster-contrast': 0.28,
+        'raster-brightness-min': 0.04,
+        'raster-brightness-max': 0.84,
       },
     },
   ],
@@ -64,10 +64,11 @@ function buildReplaySignalPath(points, yMin, yMax) {
 
 function updateTrackSource(map, replayPoints) {
   if (!map?.isStyleLoaded()) return;
-  const source = map.getSource('gps-playback-track');
-  if (!source) return;
+  const pointSource = map.getSource('gps-playback-track');
+  const lineSource = map.getSource('gps-playback-line');
+  if (!pointSource || !lineSource) return;
 
-  source.setData({
+  pointSource.setData({
     type: 'FeatureCollection',
     features: replayPoints.map((point) => ({
       type: 'Feature',
@@ -77,6 +78,14 @@ function updateTrackSource(map, replayPoints) {
         color: gToColor(point.gMag),
       },
     })),
+  });
+  lineSource.setData({
+    type: 'Feature',
+    geometry: {
+      type: 'LineString',
+      coordinates: replayPoints.map((point) => [point.lon, point.lat]),
+    },
+    properties: {},
   });
 
   if (replayPoints.length) {
@@ -92,6 +101,7 @@ function updateTrackSource(map, replayPoints) {
 }
 
 export default function GPSPlayback({ samples = [], availableSignalIds = [] }) {
+  const shellRef = useRef(null);
   const mapRef = useRef(null);
   const mapNodeRef = useRef(null);
   const markerRef = useRef(null);
@@ -99,6 +109,8 @@ export default function GPSPlayback({ samples = [], availableSignalIds = [] }) {
   const [playbackIndex, setPlaybackIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [selectedSignalId, setSelectedSignalId] = useState('sdu[0].shock');
+  const [selectedSignalIds, setSelectedSignalIds] = useState(['sdu[0].shock']);
+  const [traceColors, setTraceColors] = useState({});
 
   const signalOptions = useMemo(() => (
     availableSignalIds.filter((signalId) => signalId !== 'ts')
@@ -110,6 +122,19 @@ export default function GPSPlayback({ samples = [], availableSignalIds = [] }) {
       setSelectedSignalId(signalOptions[0]);
     }
   }, [selectedSignalId, signalOptions]);
+
+  useEffect(() => {
+    if (!signalOptions.length) {
+      setSelectedSignalIds([]);
+      return;
+    }
+
+    setSelectedSignalIds((current) => {
+      const filtered = current.filter((signalId) => signalOptions.includes(signalId));
+      if (filtered.length) return filtered;
+      return [signalOptions[0]];
+    });
+  }, [signalOptions]);
 
   const points = useMemo(() => {
     const timestamps = normalizeSampleTimestamps(samples);
@@ -134,17 +159,22 @@ export default function GPSPlayback({ samples = [], availableSignalIds = [] }) {
         headingAccuracy: sample['gps.heading_accuracy_deg'],
         baseline: sample['gps.baseline_m'],
         headingSource: sample['gps.heading_source'],
-        signalValue: sample[selectedSignalId],
+        signalValues: Object.fromEntries(
+          selectedSignalIds.map((signalId) => [signalId, sample[signalId]]),
+        ),
         gMag: gMagnitude(sample, 'imu[0].ax', 'imu[0].ay'),
       };
     }).filter(Boolean);
-  }, [samples, selectedSignalId]);
+  }, [samples, selectedSignalIds]);
 
-  const signalSeries = useMemo(() => (
-    points
-      .filter((point) => typeof point.signalValue === 'number' && Number.isFinite(point.signalValue))
-      .map((point) => ({ index: point.index, timestamp: point.timestamp, value: point.signalValue }))
-  ), [points]);
+  const signalSeriesMap = useMemo(() => (
+    Object.fromEntries(selectedSignalIds.map((signalId) => [
+      signalId,
+      points
+        .filter((point) => typeof point.signalValues?.[signalId] === 'number' && Number.isFinite(point.signalValues[signalId]))
+        .map((point) => ({ index: point.index, timestamp: point.timestamp, value: point.signalValues[signalId] })),
+    ]))
+  ), [points, selectedSignalIds]);
 
   useEffect(() => {
     pointsRef.current = points;
@@ -194,16 +224,41 @@ export default function GPSPlayback({ samples = [], availableSignalIds = [] }) {
         type: 'geojson',
         data: { type: 'FeatureCollection', features: [] },
       });
+      map.addSource('gps-playback-line', {
+        type: 'geojson',
+        data: { type: 'Feature', geometry: { type: 'LineString', coordinates: [] }, properties: {} },
+      });
+      map.addLayer({
+        id: 'gps-playback-line-glow',
+        type: 'line',
+        source: 'gps-playback-line',
+        paint: {
+          'line-color': 'rgba(0, 229, 255, 0.28)',
+          'line-width': 10,
+          'line-blur': 1.2,
+          'line-opacity': 0.72,
+        },
+      });
+      map.addLayer({
+        id: 'gps-playback-line-core',
+        type: 'line',
+        source: 'gps-playback-line',
+        paint: {
+          'line-color': '#f8fafc',
+          'line-width': 3.8,
+          'line-opacity': 0.92,
+        },
+      });
       map.addLayer({
         id: 'gps-playback-track-points',
         type: 'circle',
         source: 'gps-playback-track',
         paint: {
-          'circle-radius': 4,
+          'circle-radius': 4.6,
           'circle-color': ['get', 'color'],
-          'circle-opacity': 0.82,
-          'circle-stroke-width': 1,
-          'circle-stroke-color': 'rgba(255,255,255,0.55)',
+          'circle-opacity': 0.96,
+          'circle-stroke-width': 1.4,
+          'circle-stroke-color': 'rgba(255,255,255,0.88)',
         },
       });
       map.on('click', 'gps-playback-track-points', (event) => {
@@ -243,18 +298,38 @@ export default function GPSPlayback({ samples = [], availableSignalIds = [] }) {
     });
   }, [currentPoint]);
 
-  const signalDef = getSignalDefinition(selectedSignalId);
-  const yValues = signalSeries.map((point) => point.value);
+  const signalDefs = useMemo(() => (
+    selectedSignalIds.map((signalId) => getSignalDefinition(signalId))
+  ), [selectedSignalIds]);
+  const activeSignalDef = getSignalDefinition(selectedSignalId);
+  const yValues = Object.values(signalSeriesMap).flat().map((point) => point.value);
   const yMin = yValues.length ? Math.min(...yValues) : 0;
   const yMax = yValues.length ? Math.max(...yValues) : 1;
-  const currentSignal = currentPoint && typeof currentPoint.signalValue === 'number'
-    ? currentPoint.signalValue
-    : null;
   const totalDuration = points.length > 1 ? points[points.length - 1].timestamp - points[0].timestamp : 0;
   const currentDuration = currentPoint ? currentPoint.timestamp - points[0].timestamp : 0;
 
+  const addSignalOverlay = () => {
+    if (!selectedSignalId) return;
+    setSelectedSignalIds((current) => (
+      current.includes(selectedSignalId) ? current : [...current, selectedSignalId]
+    ));
+  };
+
+  const removeSignalOverlay = (signalId) => {
+    setSelectedSignalIds((current) => current.filter((entry) => entry !== signalId));
+  };
+
+  const toggleFullscreen = async () => {
+    if (!shellRef.current) return;
+    if (document.fullscreenElement === shellRef.current) {
+      await document.exitFullscreen();
+      return;
+    }
+    await shellRef.current.requestFullscreen();
+  };
+
   return (
-    <section className="gps-playback-shell glass">
+    <section ref={shellRef} className="gps-playback-shell glass">
       <div className="gps-playback-header">
         <div>
           <h3>GPS Replay Studio</h3>
@@ -267,6 +342,14 @@ export default function GPSPlayback({ samples = [], availableSignalIds = [] }) {
               return <option key={signalId} value={signalId}>{signal.name}</option>;
             })}
           </select>
+          <button
+            type="button"
+            className="plot-tool-btn"
+            onClick={addSignalOverlay}
+            disabled={!selectedSignalId}
+          >
+            Add Signal
+          </button>
           <button
             type="button"
             className="plot-tool-btn"
@@ -289,8 +372,47 @@ export default function GPSPlayback({ samples = [], availableSignalIds = [] }) {
           >
             Show Full Lap
           </button>
+          <button
+            type="button"
+            className="plot-tool-btn"
+            onClick={toggleFullscreen}
+          >
+            Full Screen
+          </button>
         </div>
       </div>
+
+      {selectedSignalIds.length ? (
+        <div className="gps-playback-trace-bar">
+          <div className="plot-overlay-chips">
+            {signalDefs.map((signalDef) => (
+              <button
+                key={signalDef.id}
+                type="button"
+                className="plot-overlay-chip"
+                onClick={() => removeSignalOverlay(signalDef.id)}
+              >
+                Remove {signalDef.name}
+              </button>
+            ))}
+          </div>
+          <div className="plot-color-grid">
+            {signalDefs.map((signalDef) => (
+              <label key={signalDef.id} className="plot-color-chip">
+                <input
+                  type="color"
+                  value={traceColors[signalDef.id] || signalDef.color}
+                  onChange={(event) => setTraceColors((current) => ({
+                    ...current,
+                    [signalDef.id]: event.target.value,
+                  }))}
+                />
+                <span>{signalDef.name}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       <div className="gps-playback-grid">
         <div className="gps-playback-map-card">
@@ -316,31 +438,71 @@ export default function GPSPlayback({ samples = [], availableSignalIds = [] }) {
 
           <div className="gps-playback-side-plot">
             <div className="gps-playback-side-header">
-              <h4>{signalDef.name}</h4>
-              <span>{currentSignal == null ? '--' : `${formatSignalValue(signalDef, currentSignal)} ${signalDef.unit}`}</span>
+              <h4>Linked Signal Playback</h4>
+              <span>{signalDefs.length} trace{signalDefs.length === 1 ? '' : 's'} synced to map replay</span>
             </div>
             <svg viewBox="0 0 560 220" className="gps-playback-side-svg">
               <line x1="28" y1="188" x2="532" y2="188" stroke="rgba(255,255,255,0.16)" strokeWidth="1.4" />
               <line x1="28" y1="24" x2="28" y2="188" stroke="rgba(255,255,255,0.16)" strokeWidth="1.4" />
-              <path d={buildReplaySignalPath(signalSeries, yMin, yMax)} fill="none" stroke={signalDef.color} strokeWidth="2.8" strokeLinecap="round" />
-              {currentPoint && signalSeries.length > 0 ? (
-                (() => {
-                  const nearest = signalSeries.reduce((best, point) => (
-                    Math.abs(point.timestamp - currentPoint.timestamp) < Math.abs(best.timestamp - currentPoint.timestamp) ? point : best
-                  ), signalSeries[0]);
-                  const idx = signalSeries.indexOf(nearest);
-                  const x = 28 + (idx / Math.max(signalSeries.length - 1, 1)) * 500;
-                  const normalized = yMax === yMin ? 0.5 : (nearest.value - yMin) / (yMax - yMin);
-                  const y = 188 - (normalized * 156);
-                  return (
-                    <>
-                      <line x1={x} y1="24" x2={x} y2="188" stroke="rgba(0,229,255,0.4)" strokeDasharray="4 4" />
-                      <circle cx={x} cy={y} r="5" fill={signalDef.color} stroke="#ffffff" strokeOpacity="0.6" strokeWidth="1" />
-                    </>
-                  );
-                })()
+              {signalDefs.map((signalDef) => {
+                const series = signalSeriesMap[signalDef.id] || [];
+                const color = traceColors[signalDef.id] || signalDef.color;
+                return (
+                  <path
+                    key={signalDef.id}
+                    d={buildReplaySignalPath(series, yMin, yMax)}
+                    fill="none"
+                    stroke={color}
+                    strokeWidth={signalDef.id === selectedSignalId ? 3.2 : 2.2}
+                    strokeLinecap="round"
+                    strokeOpacity={signalDef.id === selectedSignalId ? 1 : 0.78}
+                  />
+                );
+              })}
+              {currentPoint ? (
+                <>
+                  {signalDefs.map((signalDef) => {
+                    const series = signalSeriesMap[signalDef.id] || [];
+                    if (!series.length) return null;
+                    const nearest = series.reduce((best, point) => (
+                      Math.abs(point.timestamp - currentPoint.timestamp) < Math.abs(best.timestamp - currentPoint.timestamp) ? point : best
+                    ), series[0]);
+                    const idx = series.indexOf(nearest);
+                    const x = 28 + (idx / Math.max(series.length - 1, 1)) * 500;
+                    const normalized = yMax === yMin ? 0.5 : (nearest.value - yMin) / (yMax - yMin);
+                    const y = 188 - (normalized * 156);
+                    return (
+                      <circle
+                        key={`${signalDef.id}-cursor`}
+                        cx={x}
+                        cy={y}
+                        r={signalDef.id === selectedSignalId ? 5.2 : 4.2}
+                        fill={traceColors[signalDef.id] || signalDef.color}
+                        stroke="#ffffff"
+                        strokeOpacity="0.72"
+                        strokeWidth="1"
+                      />
+                    );
+                  })}
+                  <line x1={28 + ((clampPlayback(playbackIndex, 0, Math.max(points.length - 1, 0)) / Math.max(points.length - 1, 1)) * 500)} y1="24" x2={28 + ((clampPlayback(playbackIndex, 0, Math.max(points.length - 1, 0)) / Math.max(points.length - 1, 1)) * 500)} y2="188" stroke="rgba(0,229,255,0.38)" strokeDasharray="4 4" />
+                </>
               ) : null}
             </svg>
+            <div className="gps-playback-side-values">
+              {signalDefs.map((signalDef) => {
+                const value = currentPoint?.signalValues?.[signalDef.id];
+                return (
+                  <div key={signalDef.id} className="gps-playback-trace-value">
+                    <span
+                      className="gps-playback-trace-dot"
+                      style={{ background: traceColors[signalDef.id] || signalDef.color }}
+                    />
+                    <strong>{signalDef.name}</strong>
+                    <span>{typeof value === 'number' ? `${formatSignalValue(signalDef, value)} ${signalDef.unit}` : '--'}</span>
+                  </div>
+                );
+              })}
+            </div>
             <div className="gps-playback-side-caption">
               <span>Map clicks snap the replay head and this graph together.</span>
               <span>Track points are color-coded by COG G magnitude.</span>
