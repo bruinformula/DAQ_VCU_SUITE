@@ -20,6 +20,7 @@ import os
 import time
 import csv
 import re
+import glob
 from collections import deque
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -511,7 +512,7 @@ MOCK_MODE = os.environ.get('TELEMETRY_MOCK', '').lower() in ('1', 'true', 'yes')
 
 
 # ---------------------------------------------------------------------------
-# LOOP A: MDU Serial Reader (SLCAN)
+# LOOP A: USB Serial Readers
 # ---------------------------------------------------------------------------
 
 async def loop_mdu_serial():
@@ -563,6 +564,132 @@ async def loop_mdu_serial():
         except Exception as e:
             print(f"[SERIAL] Connection error: {e}. Retrying in 2s...")
             await asyncio.sleep(2)
+
+
+def auto_detect_binary_serial_ports() -> list[str]:
+    """Find candidate STM32 ACM ports that emit binary CAN mirror frames."""
+    ports = sorted(glob.glob('/dev/ttyACM*'))
+    include = os.environ.get('USB_BINARY_PORTS', '').strip()
+    if include:
+        return [port.strip() for port in include.split(',') if port.strip()]
+    return ports
+
+
+def extract_binary_can_frames(buffer: bytes) -> tuple[list[tuple[int, bytes]], bytes, int]:
+    """
+    Parse binary-framed CAN packets.
+
+    Wire format observed on the Pi:
+      0xAA | can_id_lo | can_id_hi | data_len | payload[data_len] | 0x55
+    """
+    frames: list[tuple[int, bytes]] = []
+    index = 0
+    errors = 0
+
+    while index < len(buffer):
+        start = buffer.find(b'\xAA', index)
+        if start < 0:
+            return frames, b'', errors
+
+        # Need at least header + trailer.
+        if len(buffer) - start < 5:
+            return frames, buffer[start:], errors
+
+        can_id = buffer[start + 1] | (buffer[start + 2] << 8)
+        data_length = buffer[start + 3]
+        total_length = 1 + 2 + 1 + data_length + 1
+
+        if len(buffer) - start < total_length:
+            return frames, buffer[start:], errors
+
+        end_byte = buffer[start + total_length - 1]
+        if end_byte != 0x55:
+            errors += 1
+            index = start + 1
+            continue
+
+        payload_start = start + 4
+        payload_end = payload_start + data_length
+        frames.append((can_id, bytes(buffer[payload_start:payload_end])))
+        index = start + total_length
+
+    return frames, b'', errors
+
+
+def _process_can_payload(can_id: int, data: bytes) -> None:
+    """Route a CAN ID + payload pair to the correct decoder."""
+    if len(data) == 64:
+        sdu_info = parse_sdu_id(can_id)
+        if sdu_info is not None:
+            STATE.apply_sdu_frame(can_id, list(data))
+            return
+
+    if 0x4F5 <= can_id <= 0x4FA:
+        STATE.apply_imu_raw_frame(can_id, data)
+        return
+
+    signals = decode_can_frame(can_id, data)
+    if signals is not None:
+        STATE.apply_dbc_signals(can_id, signals)
+
+
+async def loop_binary_serial_port(port: str, baudrate: int) -> None:
+    """Read binary CAN mirror packets from one STM32 ACM serial port."""
+    try:
+        import serial_asyncio
+    except ImportError:
+        print("[SYSTEM] serial_asyncio not available, skipping binary serial loop.")
+        return
+
+    while True:
+        try:
+            reader, writer = await serial_asyncio.open_serial_connection(
+                url=port, baudrate=baudrate
+            )
+            print(f"[BINARY SERIAL] Connected to {port}")
+
+            transport = writer.transport
+            serial_obj = transport.serial if hasattr(transport, 'serial') else None
+            if serial_obj is not None:
+                try:
+                    serial_obj.dtr = True
+                    serial_obj.rts = True
+                except Exception:
+                    pass
+
+            buffer = b''
+            while True:
+                chunk = await reader.read(4096)
+                if not chunk:
+                    break
+
+                buffer += chunk
+                parsed_frames, buffer, parse_errors = extract_binary_can_frames(buffer)
+                if parse_errors:
+                    STATE.frames_errors += parse_errors
+
+                for can_id, payload in parsed_frames:
+                    try:
+                        _process_can_payload(can_id, payload)
+                        STATE.frames_parsed += 1
+                    except Exception:
+                        STATE.frames_errors += 1
+        except Exception as e:
+            print(f"[BINARY SERIAL] {port} connection error: {e}. Retrying in 2s...")
+            await asyncio.sleep(2)
+
+
+async def loop_binary_serial_group() -> None:
+    """Start one binary serial reader task per detected ACM device."""
+    ports = auto_detect_binary_serial_ports()
+    if not ports:
+        print("[BINARY SERIAL] No ttyACM ports detected; skipping binary serial group.")
+        return
+
+    baudrate = int(os.environ.get('USB_BINARY_BAUD', os.environ.get('SERIAL_BAUD', '115200')))
+    print(f"[BINARY SERIAL] Starting readers for: {', '.join(ports)}")
+    for port in ports:
+        asyncio.create_task(loop_binary_serial_port(port, baudrate))
 
 
 # ---------------------------------------------------------------------------
@@ -625,24 +752,7 @@ async def loop_socketcan():
 
 def _process_frame(frame: SlcanFrame) -> None:
     """Route a parsed SLCAN frame to the correct decoder."""
-    data = bytes(frame.data_bytes)
-
-    # Check if this is an SDU/TSPMU 64-byte frame
-    if frame.data_length == 64 and frame.id_type == 'standard':
-        sdu_info = parse_sdu_id(frame.identifier)
-        if sdu_info is not None:
-            STATE.apply_sdu_frame(frame.identifier, frame.data_bytes)
-            return
-
-    # Intercept raw IMU frames
-    if 0x4F5 <= frame.identifier <= 0x4FA:
-        STATE.apply_imu_raw_frame(frame.identifier, data)
-        return
-
-    # Otherwise try DBC decoding for standard 8-byte frames
-    signals = decode_can_frame(frame.identifier, data)
-    if signals is not None:
-        STATE.apply_dbc_signals(frame.identifier, signals)
+    _process_can_payload(frame.identifier, bytes(frame.data_bytes))
 
 
 # ---------------------------------------------------------------------------
@@ -996,6 +1106,7 @@ async def lifespan(app: FastAPI):
         asyncio.create_task(loop_mock_generator())
     else:
         asyncio.create_task(loop_mdu_serial())
+        asyncio.create_task(loop_binary_serial_group())
         asyncio.create_task(loop_socketcan())
 
     asyncio.create_task(loop_csv_logger())
