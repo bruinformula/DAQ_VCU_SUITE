@@ -26,6 +26,29 @@ function makeInverterSignals(prefix, names, unit, start = 0, extra = {}) {
 
 export const signalGroups = [
   {
+    id: 'gps',
+    name: 'GPS / RTK',
+    signals: [
+      makeSignal('gps.lat', 'Latitude', 'deg', '#00e5ff', { precision: 6 }),
+      makeSignal('gps.lon', 'Longitude', 'deg', '#70d6ff', { precision: 6 }),
+      makeSignal('gps.alt', 'Altitude', 'm', '#8cffc1', { precision: 2 }),
+      makeSignal('gps.vel', 'Velocity', 'm/s', '#00ff7f', { precision: 2 }),
+      makeSignal('gps.hdg', 'Heading', 'deg', '#ffd670', { precision: 2 }),
+      makeSignal('gps.fix', 'Fix Valid', 'state', '#caffbf', { precision: 0 }),
+      makeSignal('gps.fix_quality', 'Fix Quality', 'q', '#ffb800', { precision: 0 }),
+      makeSignal('gps.rtk_state', 'RTK State', '', '#ffb800'),
+      makeSignal('gps.sats', 'Satellites', 'count', '#ff70a6', { precision: 0 }),
+      makeSignal('gps.hdop', 'HDOP', 'hdop', '#9bf6ff', { precision: 2 }),
+      makeSignal('gps.heading_valid', 'Heading Valid', 'state', '#bdb2ff', { precision: 0 }),
+      makeSignal('gps.heading_quality', 'Heading Quality', 'q', '#ffd6a5', { precision: 0 }),
+      makeSignal('gps.heading_source', 'Heading Source', '', '#ffd6a5'),
+      makeSignal('gps.heading_accuracy_deg', 'Heading Accuracy', 'deg', '#00ffff', { precision: 2 }),
+      makeSignal('gps.baseline_m', 'Baseline Length', 'm', '#ff2a4d', { precision: 3 }),
+      makeSignal('gps.pitch_deg', 'GPS Pitch', 'deg', '#70d6ff', { precision: 2 }),
+      makeSignal('gps.error_flags', 'GPS Error Flags', 'bits', '#ff70a6', { precision: 0 }),
+    ],
+  },
+  {
     id: 'bms_core',
     name: 'BMS Core',
     signals: [

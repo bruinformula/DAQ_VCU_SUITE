@@ -15,6 +15,7 @@ import cantools.database.conversion as can_conv
 
 # Create conversion objects
 conv_0_01 = can_conv.LinearConversion.factory(scale=0.01, offset=0, is_float=False)
+conv_0_001 = can_conv.LinearConversion.factory(scale=0.001, offset=0, is_float=False)
 conv_1 = can_conv.LinearConversion.factory(scale=1, offset=0, is_float=False)
 conv_gps_deg_e7 = can_conv.LinearConversion.factory(scale=0.0000001, offset=0, is_float=False)
 conv_gps_alt_dm = can_conv.LinearConversion.factory(scale=0.1, offset=0, is_float=False)
@@ -57,6 +58,49 @@ msg_1268 = can_message.Message(frame_id=1268, name='GPS1_Navigation', length=8, 
     can_signal.Signal('GPS_Satellites', 56, 8, byte_order='little_endian', is_signed=False, conversion=conv_1),
 ])
 
+# 0x040 / 64: GPS timesync frame from latest mk11-smu
+msg_64 = can_message.Message(frame_id=64, name='GPS_COG_Timesync', length=64, signals=[
+    can_signal.Signal('GPS_Timestamp_Us', 0, 32, byte_order='little_endian', is_signed=False, conversion=conv_1, unit='us'),
+    can_signal.Signal('GPS_Utc_Ms_Of_Day', 32, 32, byte_order='little_endian', is_signed=False, conversion=conv_1, unit='ms'),
+    can_signal.Signal('GPS_Utc_Date', 64, 32, byte_order='little_endian', is_signed=False, conversion=conv_1),
+    can_signal.Signal('GPS_Fix_Valid', 96, 8, byte_order='little_endian', is_signed=False, conversion=conv_1),
+    can_signal.Signal('GPS_Fix_Quality', 104, 8, byte_order='little_endian', is_signed=False, conversion=conv_1),
+    can_signal.Signal('GPS_Satellites', 112, 8, byte_order='little_endian', is_signed=False, conversion=conv_1),
+    can_signal.Signal('GPS_Heading_Valid', 120, 8, byte_order='little_endian', is_signed=False, conversion=conv_1),
+    can_signal.Signal('GPS_Sentence_Count', 128, 32, byte_order='little_endian', is_signed=False, conversion=conv_1),
+    can_signal.Signal('GPS_RMC_Count', 160, 32, byte_order='little_endian', is_signed=False, conversion=conv_1),
+    can_signal.Signal('GPS_GGA_Count', 192, 32, byte_order='little_endian', is_signed=False, conversion=conv_1),
+    can_signal.Signal('GPS_PQTMTAR_Count', 224, 32, byte_order='little_endian', is_signed=False, conversion=conv_1),
+    can_signal.Signal('GPS_Error_Flags', 504, 8, byte_order='little_endian', is_signed=False, conversion=conv_1),
+])
+
+# 0x041 / 65: GPS position frame from latest mk11-smu
+msg_65 = can_message.Message(frame_id=65, name='GPS_COG_Position', length=64, signals=[
+    can_signal.Signal('GPS_Timestamp_Us', 0, 32, byte_order='little_endian', is_signed=False, conversion=conv_1, unit='us'),
+    can_signal.Signal('GPS_Latitude', 32, 32, byte_order='little_endian', is_signed=True, conversion=conv_gps_deg_e7, unit='deg'),
+    can_signal.Signal('GPS_Longitude', 64, 32, byte_order='little_endian', is_signed=True, conversion=conv_gps_deg_e7, unit='deg'),
+    can_signal.Signal('GPS_Altitude', 96, 32, byte_order='little_endian', is_signed=True, conversion=conv_0_001, unit='m'),
+    can_signal.Signal('GPS_HDOP', 128, 16, byte_order='little_endian', is_signed=False, conversion=conv_0_01, unit='hdop'),
+    can_signal.Signal('GPS_Fix_Valid', 144, 8, byte_order='little_endian', is_signed=False, conversion=conv_1),
+    can_signal.Signal('GPS_Fix_Quality', 152, 8, byte_order='little_endian', is_signed=False, conversion=conv_1),
+    can_signal.Signal('GPS_Satellites', 160, 8, byte_order='little_endian', is_signed=False, conversion=conv_1),
+    can_signal.Signal('GPS_Error_Flags', 504, 8, byte_order='little_endian', is_signed=False, conversion=conv_1),
+])
+
+# 0x042 / 66: GPS navigation frame from latest mk11-smu
+msg_66 = can_message.Message(frame_id=66, name='GPS_COG_Navigation', length=64, signals=[
+    can_signal.Signal('GPS_Timestamp_Us', 0, 32, byte_order='little_endian', is_signed=False, conversion=conv_1, unit='us'),
+    can_signal.Signal('GPS_Velocity', 32, 32, byte_order='little_endian', is_signed=False, conversion=conv_0_01, unit='m/s'),
+    can_signal.Signal('GPS_Course', 64, 32, byte_order='little_endian', is_signed=True, conversion=conv_0_01, unit='deg'),
+    can_signal.Signal('GPS_Heading', 96, 32, byte_order='little_endian', is_signed=True, conversion=conv_0_01, unit='deg'),
+    can_signal.Signal('GPS_Heading_Accuracy', 128, 16, byte_order='little_endian', is_signed=False, conversion=conv_0_01, unit='deg'),
+    can_signal.Signal('GPS_Heading_Valid', 144, 8, byte_order='little_endian', is_signed=False, conversion=conv_1),
+    can_signal.Signal('GPS_Heading_Quality', 152, 8, byte_order='little_endian', is_signed=False, conversion=conv_1),
+    can_signal.Signal('GPS_Baseline', 160, 32, byte_order='little_endian', is_signed=False, conversion=conv_0_001, unit='m'),
+    can_signal.Signal('GPS_Pitch', 192, 32, byte_order='little_endian', is_signed=True, conversion=conv_0_01, unit='deg'),
+    can_signal.Signal('GPS_Error_Flags', 504, 8, byte_order='little_endian', is_signed=False, conversion=conv_1),
+])
+
 # Apply overrides
 for i in range(len(db.messages)):
     if db.messages[i].frame_id == 1712:
@@ -69,12 +113,21 @@ for i in range(len(db.messages)):
         db.messages[i] = msg_1267
     elif db.messages[i].frame_id == 1268:
         db.messages[i] = msg_1268
+    elif db.messages[i].frame_id == 64:
+        db.messages[i] = msg_64
+    elif db.messages[i].frame_id == 65:
+        db.messages[i] = msg_65
+    elif db.messages[i].frame_id == 66:
+        db.messages[i] = msg_66
 
 db._frame_id_to_message[1712] = msg_1712
 db._frame_id_to_message[1713] = msg_1713
 db._frame_id_to_message[1714] = msg_1714
 db._frame_id_to_message[1267] = msg_1267
 db._frame_id_to_message[1268] = msg_1268
+db._frame_id_to_message[64] = msg_64
+db._frame_id_to_message[65] = msg_65
+db._frame_id_to_message[66] = msg_66
 
 def decode_can_frame(can_id: int, data: bytes):
     try:

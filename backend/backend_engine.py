@@ -92,7 +92,21 @@ class TelemetryState:
         self.gps_vel: float = 0.0
         self.gps_heading: float = 0.0
         self.gps_fix: int = 0
+        self.gps_fix_quality: int = 0
         self.gps_sats: int = 0
+        self.gps_heading_valid: int = 0
+        self.gps_heading_quality: int = 0
+        self.gps_hdop: float = 0.0
+        self.gps_heading_accuracy_deg: float = 0.0
+        self.gps_baseline_m: float = 0.0
+        self.gps_pitch_deg: float = 0.0
+        self.gps_error_flags: int = 0
+        self.gps_utc_ms_of_day: int = 0
+        self.gps_utc_date: int = 0
+        self.gps_sentence_count: int = 0
+        self.gps_rmc_count: int = 0
+        self.gps_gga_count: int = 0
+        self.gps_pqtmtar_count: int = 0
         self.gps_meta = {'position': 0.0, 'nav': 0.0}
         self.gps_rtk_state: str = "unknown"
         self.gps_heading_source: str = "unknown"
@@ -267,23 +281,58 @@ class TelemetryState:
         self.update_inverter_payloads(signals)
         self.update_aux_payloads(can_id, signals)
 
+        def gps_quality_to_rtk_state(quality: int) -> str:
+            return {
+                0: 'no_fix',
+                1: 'gps',
+                2: 'dgps',
+                4: 'rtk_fixed',
+                5: 'rtk_float',
+            }.get(int(quality), f'q{int(quality)}')
+
         # GPS
-        if can_id == 0x4F3:
+        if can_id == 0x040:
+            self.gps_fix = int(signals.get('GPS_Fix_Valid', self.gps_fix))
+            self.gps_fix_quality = int(signals.get('GPS_Fix_Quality', self.gps_fix_quality))
+            self.gps_sats = int(signals.get('GPS_Satellites', self.gps_sats))
+            self.gps_heading_valid = int(signals.get('GPS_Heading_Valid', self.gps_heading_valid))
+            self.gps_utc_ms_of_day = int(signals.get('GPS_Utc_Ms_Of_Day', self.gps_utc_ms_of_day))
+            self.gps_utc_date = int(signals.get('GPS_Utc_Date', self.gps_utc_date))
+            self.gps_sentence_count = int(signals.get('GPS_Sentence_Count', self.gps_sentence_count))
+            self.gps_rmc_count = int(signals.get('GPS_RMC_Count', self.gps_rmc_count))
+            self.gps_gga_count = int(signals.get('GPS_GGA_Count', self.gps_gga_count))
+            self.gps_pqtmtar_count = int(signals.get('GPS_PQTMTAR_Count', self.gps_pqtmtar_count))
+            self.gps_error_flags = int(signals.get('GPS_Error_Flags', self.gps_error_flags))
+            self.gps_rtk_state = gps_quality_to_rtk_state(self.gps_fix_quality)
+            self.gps_heading_source = 'rtk_heading' if self.gps_heading_valid else 'course_over_ground'
+        elif can_id in (0x041, 0x4F3):
             self.gps_lat = signals.get('GPS_Latitude', self.gps_lat)
             self.gps_lon = signals.get('GPS_Longitude', self.gps_lon)
+            self.gps_alt = signals.get('GPS_Altitude', self.gps_alt)
+            self.gps_hdop = signals.get('GPS_HDOP', self.gps_hdop)
+            self.gps_fix = int(signals.get('GPS_Fix_Valid', self.gps_fix))
+            self.gps_fix_quality = int(signals.get('GPS_Fix_Quality', self.gps_fix_quality))
+            self.gps_sats = int(signals.get('GPS_Satellites', self.gps_sats))
+            self.gps_error_flags = int(signals.get('GPS_Error_Flags', self.gps_error_flags))
             self.gps_meta['position'] = time.time()
-        elif can_id == 0x4F4:
+            self.gps_rtk_state = gps_quality_to_rtk_state(self.gps_fix_quality)
+        elif can_id in (0x042, 0x4F4):
             self.gps_vel = signals.get('GPS_Velocity', self.gps_vel)
-            self.gps_heading = signals.get('GPS_Heading', self.gps_heading)
+            self.gps_heading = signals.get('GPS_Heading', signals.get('GPS_Course', self.gps_heading))
             self.gps_alt = signals.get('GPS_Altitude', self.gps_alt)
             self.gps_fix = int(signals.get('GPS_Fix_Valid', self.gps_fix))
             self.gps_sats = int(signals.get('GPS_Satellites', self.gps_sats))
+            self.gps_heading_valid = int(signals.get('GPS_Heading_Valid', self.gps_heading_valid))
+            self.gps_heading_quality = int(signals.get('GPS_Heading_Quality', self.gps_heading_quality))
+            self.gps_heading_accuracy_deg = signals.get('GPS_Heading_Accuracy', self.gps_heading_accuracy_deg)
+            self.gps_baseline_m = signals.get('GPS_Baseline', self.gps_baseline_m)
+            self.gps_pitch_deg = signals.get('GPS_Pitch', self.gps_pitch_deg)
+            self.gps_error_flags = int(signals.get('GPS_Error_Flags', self.gps_error_flags))
             self.gps_meta['nav'] = time.time()
-            # The current mk11-smu CAN payload only exports fix_valid + satellites.
-            # RTK fix_quality (0/1/2/4/5) and heading_quality stay inside the SMU
-            # firmware/log stream and are not preserved on 0x4F3/0x4F4.
-            self.gps_rtk_state = 'unavailable_over_can'
-            self.gps_heading_source = 'smu_fused_heading'
+            if 'GPS_Fix_Quality' in signals:
+                self.gps_fix_quality = int(signals.get('GPS_Fix_Quality', self.gps_fix_quality))
+                self.gps_rtk_state = gps_quality_to_rtk_state(self.gps_fix_quality)
+            self.gps_heading_source = 'rtk_heading' if self.gps_heading_valid else 'course_over_ground'
 
         # IMU
         elif can_id == 0x4F5:
@@ -498,6 +547,20 @@ class TelemetryState:
                 'alt': round(self.gps_alt, 1), 'vel': round(self.gps_vel, 2),
                 'hdg': round(self.gps_heading, 1),
                 'fix': self.gps_fix, 'sats': self.gps_sats,
+                'fix_quality': self.gps_fix_quality,
+                'heading_valid': self.gps_heading_valid,
+                'heading_quality': self.gps_heading_quality,
+                'hdop': round(self.gps_hdop, 2),
+                'heading_accuracy_deg': round(self.gps_heading_accuracy_deg, 2),
+                'baseline_m': round(self.gps_baseline_m, 3),
+                'pitch_deg': round(self.gps_pitch_deg, 2),
+                'error_flags': self.gps_error_flags,
+                'utc_ms_of_day': self.gps_utc_ms_of_day,
+                'utc_date': self.gps_utc_date,
+                'sentence_count': self.gps_sentence_count,
+                'rmc_count': self.gps_rmc_count,
+                'gga_count': self.gps_gga_count,
+                'pqtmtar_count': self.gps_pqtmtar_count,
                 'present': gps_present,
                 'valid': gps_valid,
                 'rtk_state': self.gps_rtk_state,
@@ -954,11 +1017,19 @@ async def loop_mock_generator():
         STATE.gps_vel = 8.5 + 3.0 * math.sin(t * 0.3)
         STATE.gps_heading = (t * 20.0) % 360.0
         STATE.gps_fix = 1
+        STATE.gps_fix_quality = 5
         STATE.gps_sats = 12
+        STATE.gps_heading_valid = 1
+        STATE.gps_heading_quality = 5
+        STATE.gps_hdop = 0.65
+        STATE.gps_heading_accuracy_deg = 0.12
+        STATE.gps_baseline_m = 1.145
+        STATE.gps_pitch_deg = 0.0
+        STATE.gps_error_flags = 0
         STATE.gps_meta['position'] = now
         STATE.gps_meta['nav'] = now
-        STATE.gps_rtk_state = 'mock'
-        STATE.gps_heading_source = 'mock'
+        STATE.gps_rtk_state = 'rtk_fixed'
+        STATE.gps_heading_source = 'rtk_heading'
 
         # IMU Mock data (0 = COG, 1 = Front, 2 = Rear)
         # COG:

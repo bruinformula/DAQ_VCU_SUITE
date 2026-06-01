@@ -7,6 +7,25 @@ const DEFAULT_ZOOM = 16;
 const FOLLOW_PITCH = 48;
 const FOLLOW_ZOOM = 17.6;
 
+function rtkStatusLabel(gps) {
+  const state = gps?.rtk_state;
+  if (!state) return 'GPS';
+  switch (state) {
+    case 'rtk_fixed':
+      return 'RTK FIX';
+    case 'rtk_float':
+      return 'RTK FLOAT';
+    case 'dgps':
+      return 'DGPS';
+    case 'gps':
+      return 'GPS';
+    case 'no_fix':
+      return 'NO FIX';
+    default:
+      return String(state).replace(/_/g, ' ').toUpperCase();
+  }
+}
+
 const STREET_STYLE = {
   version: 8,
   sources: {
@@ -187,7 +206,7 @@ export default function MapViewer({ telemetryRef, isConnected }) {
         markerInstance.getElement().style.opacity = hasGpsFrames ? '1' : '0';
         setGpsStatus(
           hasGpsFrames
-            ? `${data.gps.sats || 0} sats • ${Math.max(0, data.gps.vel || 0).toFixed(1)} m/s`
+            ? `${rtkStatusLabel(data.gps)} • ${data.gps.sats || 0} sats • HDOP ${(data.gps.hdop ?? 0).toFixed(2)} • ${Math.max(0, data.gps.vel || 0).toFixed(1)} m/s`
             : isConnected
               ? 'No live GPS frames'
               : 'Telemetry link down',
