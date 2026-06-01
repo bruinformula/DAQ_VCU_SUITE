@@ -93,6 +93,7 @@ function App() {
   const [activeView, setActiveView] = useState('live');
   const [serialPorts, setSerialPorts] = useState([]);
   const [selectedPort, setSelectedPort] = useState('');
+  const [mapPanelSize, setMapPanelSize] = useState('balanced');
 
   useEffect(() => {
     if (targetIp) {
@@ -209,6 +210,7 @@ function App() {
     { ax: 0, ay: 0, az: 0 },
     { ax: 0, ay: 0, az: 0 }
   ];
+  const imuLabels = ['COG', 'Front', 'Rear'];
 
   const cogCoords = getImuCoords(imusArray, 0);
   const frontCoords = getImuCoords(imusArray, 1);
@@ -529,17 +531,39 @@ function App() {
                   ))}
                 </div>
                 <div style={{ display: 'flex', gap: '16px', minHeight: '460px', flexWrap: 'wrap' }}>
-                  <section className="map-shell glass" style={{ flex: '2 1 480px', minHeight: '460px' }}>
+                  <section className={`map-shell glass map-shell-${mapPanelSize}`} style={{ minHeight: '460px' }}>
                     <div className="map-shell-header">
-                      <h3>Track Map</h3>
-                      <p>GPS stays live here while the grouped plots handle the powertrain and chassis signals.</p>
+                      <div>
+                        <h3>Track Map</h3>
+                        <p>GPS stays live here while the grouped plots handle the powertrain and chassis signals.</p>
+                      </div>
+                      <div className="map-size-controls">
+                        <button
+                          className={`map-size-button ${mapPanelSize === 'balanced' ? 'active' : ''}`}
+                          onClick={() => setMapPanelSize('balanced')}
+                        >
+                          Balanced
+                        </button>
+                        <button
+                          className={`map-size-button ${mapPanelSize === 'wide' ? 'active' : ''}`}
+                          onClick={() => setMapPanelSize('wide')}
+                        >
+                          Wide
+                        </button>
+                        <button
+                          className={`map-size-button ${mapPanelSize === 'focus' ? 'active' : ''}`}
+                          onClick={() => setMapPanelSize('focus')}
+                        >
+                          Focus
+                        </button>
+                      </div>
                     </div>
                     <div className="map-shell-body">
                       <MapViewer telemetryRef={telemetryRef} isConnected={isConnected} />
                     </div>
                   </section>
 
-                  <section className="gforce-shell glass" style={{ flex: '1 1 240px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px', borderRadius: '18px', minHeight: '460px', alignItems: 'center', justifyContent: 'center' }}>
+                  <section className={`gforce-shell glass gforce-shell-${mapPanelSize}`} style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px', borderRadius: '18px', minHeight: '460px', alignItems: 'center', justifyContent: 'center' }}>
                     <div style={{ width: '100%', textAlign: 'center', marginBottom: '8px' }}>
                       <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 600 }}>G-Force Meter</h3>
                       <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', margin: '4px 0 0' }}>Real-time acceleration vector</p>
@@ -564,13 +588,13 @@ function App() {
                           <text x="94" y="53" text-anchor="end" fill="var(--text-secondary)" fillOpacity="0.8" fontWeight="600" fontSize="8" fontFamily="sans-serif">R</text>
 
                           {/* COG G position indicator dot (Cyan) */}
-                          <circle cx={cogCoords.cx.toFixed(1)} cy={cogCoords.cy.toFixed(1)} r="4.5" fill="var(--accent-primary)" stroke="#ffffff" strokeWidth="0.75" strokeOpacity="0.6" style={{ filter: 'drop-shadow(0 0 5px var(--accent-primary))', transition: 'cx 60ms ease, cy 60ms ease' }}></circle>
+                          <circle cx={cogCoords.cx.toFixed(1)} cy={cogCoords.cy.toFixed(1)} r="4.5" fill="var(--accent-primary)" stroke="#ffffff" strokeWidth="0.75" strokeOpacity="0.6" style={{ filter: 'drop-shadow(0 0 5px var(--accent-primary))', transition: 'cx 60ms ease, cy 60ms ease', opacity: imusArray[0]?.valid ? 1 : 0.18 }}></circle>
 
                           {/* Front G position indicator dot (Emerald Green) */}
-                          <circle cx={frontCoords.cx.toFixed(1)} cy={frontCoords.cy.toFixed(1)} r="4.5" fill="var(--accent-success)" stroke="#ffffff" strokeWidth="0.75" strokeOpacity="0.6" style={{ filter: 'drop-shadow(0 0 5px var(--accent-success))', transition: 'cx 60ms ease, cy 60ms ease' }}></circle>
+                          <circle cx={frontCoords.cx.toFixed(1)} cy={frontCoords.cy.toFixed(1)} r="4.5" fill="var(--accent-success)" stroke="#ffffff" strokeWidth="0.75" strokeOpacity="0.6" style={{ filter: 'drop-shadow(0 0 5px var(--accent-success))', transition: 'cx 60ms ease, cy 60ms ease', opacity: imusArray[1]?.valid ? 1 : 0.18 }}></circle>
 
                           {/* Rear G position indicator dot (Sunset Red) */}
-                          <circle cx={rearCoords.cx.toFixed(1)} cy={rearCoords.cy.toFixed(1)} r="4.5" fill="var(--accent-danger)" stroke="#ffffff" strokeWidth="0.75" strokeOpacity="0.6" style={{ filter: 'drop-shadow(0 0 5px var(--accent-danger))', transition: 'cx 60ms ease, cy 60ms ease' }}></circle>
+                          <circle cx={rearCoords.cx.toFixed(1)} cy={rearCoords.cy.toFixed(1)} r="4.5" fill="var(--accent-danger)" stroke="#ffffff" strokeWidth="0.75" strokeOpacity="0.6" style={{ filter: 'drop-shadow(0 0 5px var(--accent-danger))', transition: 'cx 60ms ease, cy 60ms ease', opacity: imusArray[2]?.valid ? 1 : 0.18 }}></circle>
                         </svg>
 
                         {/* Inline color legend with individual magnitudes */}
@@ -580,24 +604,38 @@ function App() {
                               <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--accent-primary)', boxShadow: '0 0 4px var(--accent-primary)' }} />
                               <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>COG</span>
                             </div>
-                            <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--text-primary)' }}>{cogCoords.gMag.toFixed(2)} G</span>
+                            <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, color: imusArray[0]?.valid ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
+                              {imusArray[0]?.valid ? `${cogCoords.gMag.toFixed(2)} G` : 'No data'}
+                            </span>
                           </div>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                               <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--accent-success)', boxShadow: '0 0 4px var(--accent-success)' }} />
                               <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>Front</span>
                             </div>
-                            <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--text-primary)' }}>{frontCoords.gMag.toFixed(2)} G</span>
+                            <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, color: imusArray[1]?.valid ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
+                              {imusArray[1]?.valid ? `${frontCoords.gMag.toFixed(2)} G` : 'No data'}
+                            </span>
                           </div>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                               <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--accent-danger)', boxShadow: '0 0 4px var(--accent-danger)' }} />
                               <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>Rear</span>
                             </div>
-                            <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--text-primary)' }}>{rearCoords.gMag.toFixed(2)} G</span>
+                            <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, color: imusArray[2]?.valid ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
+                              {imusArray[2]?.valid ? `${rearCoords.gMag.toFixed(2)} G` : 'No data'}
+                            </span>
                           </div>
                         </div>
                       </div>
+                    </div>
+                    <div style={{ width: '100%', display: 'grid', gap: '8px', fontSize: '0.78rem' }}>
+                      {imusArray.map((imu, index) => (
+                        <div key={imuLabels[index]} style={{ display: 'flex', justifyContent: 'space-between', color: imu?.valid ? 'var(--text-secondary)' : 'var(--accent-warning)' }}>
+                          <span>{imuLabels[index]} IMU</span>
+                          <span style={{ fontFamily: 'var(--font-mono)' }}>{imu?.valid ? 'LIVE' : 'MISSING'}</span>
+                        </div>
+                      ))}
                     </div>
                   </section>
                 </div>

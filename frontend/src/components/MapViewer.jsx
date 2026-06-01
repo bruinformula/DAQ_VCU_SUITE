@@ -105,6 +105,7 @@ export default function MapViewer({ telemetryRef, isConnected }) {
 
   const [followCar, setFollowCar] = useState(true);
   const [gpsStatus, setGpsStatus] = useState('Waiting for GPS lock');
+  const [gpsReady, setGpsReady] = useState(false);
 
   useEffect(() => {
     followCarRef.current = followCar;
@@ -180,11 +181,15 @@ export default function MapViewer({ telemetryRef, isConnected }) {
       const data = telemetryRef.current;
 
       if (mapInstance && markerInstance && data?.gps) {
-        const hasGpsFix = Boolean(data.gps.fix) && data.gps.lat !== 0 && data.gps.lon !== 0;
+        const hasGpsFix = Boolean(data.gps.valid) && data.gps.lat !== 0 && data.gps.lon !== 0;
+        setGpsReady(hasGpsFix);
+        markerInstance.getElement().style.opacity = hasGpsFix ? '1' : '0';
         setGpsStatus(
           hasGpsFix
             ? `${data.gps.sats || 0} sats • ${Math.max(0, data.gps.vel || 0).toFixed(1)} m/s`
-            : 'Waiting for GPS lock',
+            : isConnected
+              ? 'No live GPS frames'
+              : 'Telemetry link down',
         );
 
         if (isConnected && hasGpsFix && data.ts > lastTsRef.current) {
@@ -249,6 +254,16 @@ export default function MapViewer({ telemetryRef, isConnected }) {
     <div className="track-map-shell">
       <div ref={mapContainer} className="track-map-canvas" />
 
+      {!gpsReady ? (
+        <div className="track-map-empty-state">
+          <div className="track-map-empty-card">
+            <span className="track-map-empty-kicker">GPS Offline</span>
+            <strong>No valid GPS position is being received right now.</strong>
+            <p>The map will snap live as soon as position and navigation frames are both present again.</p>
+          </div>
+        </div>
+      ) : null}
+
       <div className="track-map-overlay track-map-title">
         <div className="track-map-kicker">Track Map</div>
         <div className="track-map-subtitle">Street basemap with tilt, rotate, breadcrumb trail, and live vehicle heading.</div>
@@ -256,7 +271,7 @@ export default function MapViewer({ telemetryRef, isConnected }) {
 
       <div className="track-map-overlay track-map-status">
         <div className={`track-map-pill ${isConnected ? 'is-live' : ''}`}>{isConnected ? 'LIVE LINK' : 'LINK DOWN'}</div>
-        <div className="track-map-pill is-soft">{gpsStatus}</div>
+        <div className={`track-map-pill ${gpsReady ? 'is-soft' : 'is-warning'}`}>{gpsStatus}</div>
         <button className="track-map-action" onClick={handleRecenter}>
           Follow Car
         </button>

@@ -1058,12 +1058,78 @@ body {
   flex-direction: column;
   gap: 14px;
   min-height: 460px;
+  flex: 2 1 480px;
+}
+
+.map-shell-balanced {
+  flex: 2 1 480px;
+}
+
+.map-shell-wide {
+  flex: 3 1 720px;
+}
+
+.map-shell-focus {
+  flex: 4 1 900px;
+}
+
+.gforce-shell-balanced {
+  flex: 1 1 240px;
+}
+
+.gforce-shell-wide {
+  flex: 1 1 220px;
+}
+
+.gforce-shell-focus {
+  flex: 0.8 1 200px;
 }
 
 .map-shell-body {
   flex: 1;
   min-height: 360px;
   position: relative;
+}
+
+.map-shell-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.map-size-controls {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.map-size-button {
+  min-height: 34px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-secondary);
+  padding: 0 12px;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease, transform 0.18s ease;
+}
+
+.map-size-button:hover {
+  transform: translateY(-1px);
+  color: var(--text-primary);
+  border-color: rgba(0, 229, 255, 0.26);
+}
+
+.map-size-button.active {
+  color: var(--accent-primary);
+  border-color: rgba(0, 229, 255, 0.4);
+  background: rgba(0, 229, 255, 0.08);
 }
 
 .track-map-shell {
@@ -1081,6 +1147,47 @@ body {
 .track-map-canvas {
   position: absolute;
   inset: 0;
+}
+
+.track-map-empty-state {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: linear-gradient(180deg, rgba(8, 11, 15, 0.55), rgba(8, 11, 15, 0.72));
+}
+
+.track-map-empty-card {
+  max-width: 420px;
+  padding: 20px 22px;
+  border-radius: 18px;
+  background: rgba(9, 13, 18, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28);
+  display: grid;
+  gap: 10px;
+  text-align: center;
+}
+
+.track-map-empty-kicker {
+  color: var(--accent-warning);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.track-map-empty-card strong {
+  font-size: 1rem;
+}
+
+.track-map-empty-card p {
+  color: var(--text-secondary);
+  font-size: 0.84rem;
+  line-height: 1.5;
 }
 
 .track-map-overlay {
@@ -1151,6 +1258,11 @@ body {
 
 .track-map-pill.is-soft {
   color: var(--text-secondary);
+}
+
+.track-map-pill.is-warning {
+  color: var(--accent-warning);
+  border-color: rgba(255, 184, 0, 0.24);
 }
 
 .track-map-action {

@@ -42,6 +42,8 @@ SDU_STALE_LIMITS = {
     'wheel_rpm': 4.0,
     'tire': 3.0,
 }
+GPS_STALE_LIMIT_SEC = 2.0
+IMU_STALE_LIMIT_SEC = 1.5
 FUSEBOX_STALE_LIMITS = {
     'state': 3.0,
     'power': 3.0,
@@ -91,6 +93,7 @@ class TelemetryState:
         self.gps_heading: float = 0.0
         self.gps_fix: int = 0
         self.gps_sats: int = 0
+        self.gps_meta = {'position': 0.0, 'nav': 0.0}
 
         # IMU (from SMU via CAN 0x4F5, 0x4F6)
         self.imu_ax: float = 0.0
@@ -108,6 +111,10 @@ class TelemetryState:
                 'pitch': 0.0, 'roll': 0.0, 'yaw': 0.0,
                 'cal': 0
             }
+            for _ in range(3)
+        ]
+        self.imu_meta = [
+            {'accel': 0.0, 'attitude': 0.0}
             for _ in range(3)
         ]
 
@@ -262,12 +269,14 @@ class TelemetryState:
         if can_id == 0x4F3:
             self.gps_lat = signals.get('GPS_Latitude', self.gps_lat)
             self.gps_lon = signals.get('GPS_Longitude', self.gps_lon)
+            self.gps_meta['position'] = time.time()
         elif can_id == 0x4F4:
             self.gps_vel = signals.get('GPS_Velocity', self.gps_vel)
             self.gps_heading = signals.get('GPS_Heading', self.gps_heading)
             self.gps_alt = signals.get('GPS_Altitude', self.gps_alt)
             self.gps_fix = int(signals.get('GPS_Fix_Valid', self.gps_fix))
             self.gps_sats = int(signals.get('GPS_Satellites', self.gps_sats))
+            self.gps_meta['nav'] = time.time()
 
         # IMU
         elif can_id == 0x4F5:
@@ -382,6 +391,7 @@ class TelemetryState:
                 return
 
             imu = self.imus[board_idx]
+            imu_meta = self.imu_meta[board_idx]
 
             if is_accel:
                 # Accel X, Y, Z as signed 16-bit little endian
@@ -393,6 +403,7 @@ class TelemetryState:
                     imu['cal'] = int(data[6])
                 else:
                     imu['cal'] = 0
+                imu_meta['accel'] = time.time()
 
                 # Keep legacy COG values in sync
                 if board_idx == 0:
@@ -406,6 +417,7 @@ class TelemetryState:
                 imu['pitch'] = round(pitch_cd / 100.0, 1)
                 imu['roll'] = round(roll_cd / 100.0, 1)
                 imu['yaw'] = round(yaw_cd / 100.0, 1)
+                imu_meta['attitude'] = time.time()
 
                 # Keep legacy COG values in sync
                 if board_idx == 0:
@@ -468,6 +480,9 @@ class TelemetryState:
     def to_broadcast_dict(self) -> dict:
         """Construct the JSON payload for WebSocket broadcast."""
         now = time.time()
+        gps_has_recent_pos = (now - self.gps_meta['position']) <= GPS_STALE_LIMIT_SEC
+        gps_has_recent_nav = (now - self.gps_meta['nav']) <= GPS_STALE_LIMIT_SEC
+        gps_valid = gps_has_recent_pos and gps_has_recent_nav and bool(self.gps_fix) and self.gps_lat != 0.0 and self.gps_lon != 0.0
         return {
             'ts': round(self.timestamp, 3),
             'gps': {
@@ -475,6 +490,7 @@ class TelemetryState:
                 'alt': round(self.gps_alt, 1), 'vel': round(self.gps_vel, 2),
                 'hdg': round(self.gps_heading, 1),
                 'fix': self.gps_fix, 'sats': self.gps_sats,
+                'valid': gps_valid,
             },
             'imu': {
                 'ax': round(self.imu_ax, 3), 'ay': round(self.imu_ay, 3), 'az': round(self.imu_az, 3),
@@ -489,9 +505,13 @@ class TelemetryState:
                     'pitch': round(imu['pitch'], 1),
                     'roll': round(imu['roll'], 1),
                     'yaw': round(imu['yaw'], 1),
-                    'cal': imu['cal']
+                    'cal': imu['cal'],
+                    'valid': (
+                        (now - self.imu_meta[index]['accel']) <= IMU_STALE_LIMIT_SEC
+                        or (now - self.imu_meta[index]['attitude']) <= IMU_STALE_LIMIT_SEC
+                    ),
                 }
-                for imu in self.imus
+                for index, imu in enumerate(self.imus)
             ],
             'inv': {
                 'rpm': round(self.inv_motor_speed),
@@ -923,6 +943,7 @@ async def loop_mock_generator():
 
     while True:
         t = time.time() - t0
+        now = time.time()
 
         # GPS: simulate driving in a circle
         STATE.gps_lat = 34.068 + 0.001 * math.sin(t * 0.1)
@@ -932,6 +953,8 @@ async def loop_mock_generator():
         STATE.gps_heading = (t * 20.0) % 360.0
         STATE.gps_fix = 1
         STATE.gps_sats = 12
+        STATE.gps_meta['position'] = now
+        STATE.gps_meta['nav'] = now
 
         # IMU Mock data (0 = COG, 1 = Front, 2 = Rear)
         # COG:
@@ -942,6 +965,8 @@ async def loop_mock_generator():
         STATE.imus[0]['roll'] = round(3.5 * math.sin(t * 0.1), 1)
         STATE.imus[0]['yaw'] = round((t * 20.0) % 360.0 - 180.0, 1)
         STATE.imus[0]['cal'] = 1
+        STATE.imu_meta[0]['accel'] = now
+        STATE.imu_meta[0]['attitude'] = now
 
         # Front: leading phase (+0.3) and slightly higher noise/vibration
         STATE.imus[1]['ax'] = round(0.20 * math.sin(t * 1.5 + 0.3) + 0.05 * math.sin(t * 12.0), 3)
@@ -951,6 +976,8 @@ async def loop_mock_generator():
         STATE.imus[1]['roll'] = round(4.0 * math.sin(t * 0.1 + 0.2), 1)
         STATE.imus[1]['yaw'] = round(((t * 20.0 + 5.0) % 360.0) - 180.0, 1)
         STATE.imus[1]['cal'] = 1
+        STATE.imu_meta[1]['accel'] = now
+        STATE.imu_meta[1]['attitude'] = now
 
         # Rear: lagging phase (-0.3)
         STATE.imus[2]['ax'] = round(0.12 * math.sin(t * 1.5 - 0.3) + 0.03 * math.sin(t * 8.0), 3)
@@ -960,6 +987,8 @@ async def loop_mock_generator():
         STATE.imus[2]['roll'] = round(3.0 * math.sin(t * 0.1 - 0.2), 1)
         STATE.imus[2]['yaw'] = round(((t * 20.0 - 5.0) % 360.0) - 180.0, 1)
         STATE.imus[2]['cal'] = 1
+        STATE.imu_meta[2]['accel'] = now
+        STATE.imu_meta[2]['attitude'] = now
 
         # Keep legacy flat variables in sync
         STATE.imu_ax = STATE.imus[0]['ax']
