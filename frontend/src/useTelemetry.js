@@ -381,6 +381,21 @@ export function useTelemetry() {
           connect(savedIp);
         }
       }, 0);
+    } else if (window.electronAPI) {
+      setConnectionState('connecting');
+      setConnectionMessage('Scanning network for Telemetry Hub...');
+      window.electronAPI.scanNetwork().then((foundIp) => {
+        if (foundIp && !manualDisconnectRef.current && !wsRef.current && activeSessionRef.current !== 'serial') {
+          connect(foundIp);
+        } else if (!foundIp) {
+          setConnectionState('disconnected');
+          setConnectionMessage('No Telemetry Hub found on local network.');
+        }
+      }).catch((err) => {
+        console.error('Initial auto-scan failed', err);
+        setConnectionState('disconnected');
+        setConnectionMessage('Network scan failed.');
+      });
     }
   }, [connect]);
 

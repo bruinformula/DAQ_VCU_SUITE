@@ -94,6 +94,8 @@ class TelemetryState:
         self.gps_fix: int = 0
         self.gps_sats: int = 0
         self.gps_meta = {'position': 0.0, 'nav': 0.0}
+        self.gps_rtk_state: str = "unknown"
+        self.gps_heading_source: str = "unknown"
 
         # IMU (from SMU via CAN 0x4F5, 0x4F6)
         self.imu_ax: float = 0.0
@@ -277,6 +279,11 @@ class TelemetryState:
             self.gps_fix = int(signals.get('GPS_Fix_Valid', self.gps_fix))
             self.gps_sats = int(signals.get('GPS_Satellites', self.gps_sats))
             self.gps_meta['nav'] = time.time()
+            # The current mk11-smu CAN payload only exports fix_valid + satellites.
+            # RTK fix_quality (0/1/2/4/5) and heading_quality stay inside the SMU
+            # firmware/log stream and are not preserved on 0x4F3/0x4F4.
+            self.gps_rtk_state = 'unavailable_over_can'
+            self.gps_heading_source = 'smu_fused_heading'
 
         # IMU
         elif can_id == 0x4F5:
@@ -491,6 +498,8 @@ class TelemetryState:
                 'hdg': round(self.gps_heading, 1),
                 'fix': self.gps_fix, 'sats': self.gps_sats,
                 'valid': gps_valid,
+                'rtk_state': self.gps_rtk_state,
+                'heading_source': self.gps_heading_source,
             },
             'imu': {
                 'ax': round(self.imu_ax, 3), 'ay': round(self.imu_ay, 3), 'az': round(self.imu_az, 3),
@@ -906,17 +915,8 @@ async def loop_socketcan():
                 
             can_id = msg.arbitration_id
             data = bytes(msg.data)
-            
-            # Intercept raw IMU frames
-            if 0x4F5 <= can_id <= 0x4FA:
-                STATE.apply_imu_raw_frame(can_id, data)
-                STATE.frames_parsed += 1
-            else:
-                # SocketCAN frames from VCU/BMS/Inverter are standard DBC encoded
-                signals = decode_can_frame(can_id, data)
-                if signals is not None:
-                    STATE.apply_dbc_signals(can_id, signals)
-                    STATE.frames_parsed += 1
+            _process_can_payload(can_id, data)
+            STATE.frames_parsed += 1
                 
         except asyncio.CancelledError:
             bus.shutdown()
@@ -955,6 +955,8 @@ async def loop_mock_generator():
         STATE.gps_sats = 12
         STATE.gps_meta['position'] = now
         STATE.gps_meta['nav'] = now
+        STATE.gps_rtk_state = 'mock'
+        STATE.gps_heading_source = 'mock'
 
         # IMU Mock data (0 = COG, 1 = Front, 2 = Rear)
         # COG:
