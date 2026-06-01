@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import SignalPlot from './SignalPlot';
+import GGDiagram from './GGDiagram';
 import { buildChartGroupsForSignals } from '../signals';
 
 function parseCsvLine(line) {
@@ -79,9 +80,17 @@ export default function LogViewer() {
   const [isLoadingFile, setIsLoadingFile] = useState(false);
   const [error, setError] = useState('');
 
-  const openLocalFile = async () => {
-    if (!window.electronAPI?.openLogFile) {
-      setError('Local file opening is only available in the desktop app.');
+  const loadCsvContent = (content, filename, filePath = '') => {
+    const parsed = parseLogCsv(content || '', filename || 'Telemetry Log');
+    setLogData({
+      ...parsed,
+      filePath,
+    });
+  };
+
+  const handleFileInputChange = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) {
       return;
     }
 
@@ -89,21 +98,14 @@ export default function LogViewer() {
     setError('');
 
     try {
-      const result = await window.electronAPI.openLogFile();
-      if (result?.canceled) {
-        return;
-      }
-
-      const parsed = parseLogCsv(result.content || '', result.filename || 'Telemetry Log');
-      setLogData({
-        ...parsed,
-        filePath: result.filePath,
-      });
+      const content = await file.text();
+      loadCsvContent(content, file.name, file.name);
     } catch (err) {
       console.error(err);
-      setError('Unable to open the selected CSV from this laptop.');
+      setError('Unable to read the selected CSV from this laptop.');
     } finally {
       setIsLoadingFile(false);
+      event.target.value = '';
     }
   };
 
@@ -120,9 +122,9 @@ export default function LogViewer() {
             <h3>Laptop Log Files</h3>
             <p>Open a CSV directly from this laptop and inspect it with grouped playback charts.</p>
           </div>
-          <button className="toolbar-button" onClick={openLocalFile} disabled={isLoadingFile}>
-            {isLoadingFile ? 'Opening...' : 'Open CSV'}
-          </button>
+          <div className="log-picker-status">
+            {isLoadingFile ? 'Opening…' : 'Offline CSV review'}
+          </div>
         </div>
 
         <div className="logs-list logs-list-static">
@@ -132,10 +134,21 @@ export default function LogViewer() {
             <div className="log-source-copy">
               Pick any telemetry CSV on this machine. The app no longer depends on the Pi to review recorded files.
             </div>
+            <div className="log-picker-panel">
+              <label className="log-picker-label" htmlFor="log-csv-input">Choose CSV File</label>
+              <input
+                id="log-csv-input"
+                className="log-picker-input"
+                type="file"
+                accept=".csv,text/csv"
+                onChange={handleFileInputChange}
+                disabled={isLoadingFile}
+              />
+            </div>
           </div>
 
           {logData ? (
-            <button className="log-list-item active" onClick={openLocalFile}>
+            <div className="log-list-item active">
               <div className="log-list-title">
                 <span>{logData.filename}</span>
                 <strong>LOCAL</strong>
@@ -144,17 +157,17 @@ export default function LogViewer() {
                 <span>{logData.rows?.length || 0} rows</span>
                 <span>{logData.filePath || 'Selected from laptop'}</span>
               </div>
-            </button>
+            </div>
           ) : (
-            <div className="log-empty">No local log opened yet. Use `Open CSV` to load one from your laptop.</div>
+            <div className="log-empty-inline">No local log opened yet. Use `Open CSV` to load one from your laptop.</div>
           )}
         </div>
       </aside>
 
       <section className="logs-main">
-        {error ? <div className="dashboard-empty">{error}</div> : null}
+        {error ? <div className="logs-main-empty">{error}</div> : null}
         {!logData && !error ? (
-          <div className="dashboard-empty">
+          <div className="logs-main-empty">
             {isLoadingFile ? 'Opening selected log...' : 'Choose a CSV on this laptop to inspect recorded telemetry.'}
           </div>
         ) : null}
@@ -163,10 +176,14 @@ export default function LogViewer() {
             <div className="logs-summary glass">
               <div>
                 <h3>{logData.filename}</h3>
-                <p>{logData.rows?.length || 0} rows • grouped playback charts with click-to-lock cursor readout</p>
+                <p>{logData.rows?.length || 0} rows • drag to zoom, click twice to measure, recolor overlays, full-screen any graph, and replay a G-G diagram</p>
                 <p>{logData.filePath}</p>
               </div>
             </div>
+            <GGDiagram
+              samples={logData.rows || []}
+              availableSignalIds={logData.headers || []}
+            />
             <div className="plot-grid">
               {chartGroups.map((group) => (
                 <SignalPlot
@@ -174,6 +191,8 @@ export default function LogViewer() {
                   title={group.title}
                   signalIds={group.signals}
                   staticSamples={logData.rows || []}
+                  availableSignalIds={logData.headers || []}
+                  allowOverlay
                   emptyMessage="This log does not contain values for this group."
                 />
               ))}

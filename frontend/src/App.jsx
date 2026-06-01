@@ -649,7 +649,7 @@ function App() {
             )}
           </div>
 
-          <div className={`lost-overlay ${!isConnected ? 'visible' : ''}`}>
+          <div className={`lost-overlay ${!isConnected && activeView === 'live' ? 'visible' : ''}`}>
             <div className="connect-modal glass">
               <h2>Telemetry Link</h2>
               <p>{connectionMessage}</p>

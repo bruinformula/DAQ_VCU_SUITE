@@ -413,6 +413,7 @@ export const liveChartGroups = [
   { id: 'fusebox-voltage', title: 'Fusebox Voltages', signals: ['fusebox.dcdc_v', 'fusebox.battery_v', 'fusebox.lvb_soc'] },
   { id: 'fusebox-power', title: 'Fusebox Power Draw', signals: ['fusebox.accy_fan_power', 'fusebox.tractive_fan_power', 'fusebox.tractive_pumps_power', 'fusebox.charging_power'] },
   { id: 'fusebox-temp', title: 'Fusebox Temperatures', signals: ['fusebox.dcdc_temp', 'fusebox.ambient_temp'] },
+  { id: 'sdu-shock-pots', title: 'Shock Pots', signals: ['sdu[0].shock', 'sdu[1].shock', 'sdu[2].shock', 'sdu[3].shock'] },
   { id: 'sdu-wheel-speed', title: 'Wheel Speeds', signals: ['sdu[0].wrpm', 'sdu[1].wrpm', 'sdu[2].wrpm', 'sdu[3].wrpm'] },
   { id: 'imu-lateral-comparison', title: 'Lateral Accel Comparison', signals: ['imu[0].ay', 'imu[1].ay', 'imu[2].ay'] },
   { id: 'imu-longitudinal-comparison', title: 'Longitudinal Accel Comparison', signals: ['imu[0].ax', 'imu[1].ax', 'imu[2].ax'] },

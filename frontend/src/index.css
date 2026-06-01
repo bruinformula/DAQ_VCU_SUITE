@@ -507,6 +507,27 @@ body {
   background: rgba(255, 255, 255, 0.06);
 }
 
+.file-picker-button {
+  position: relative;
+  overflow: hidden;
+}
+
+.file-picker-button input[type="file"] {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.file-picker-button.disabled {
+  opacity: 0.65;
+  cursor: default;
+}
+
+.file-picker-button.disabled input[type="file"] {
+  cursor: default;
+}
+
 .toolbar-actions {
   display: flex;
   gap: 10px;
@@ -977,6 +998,13 @@ body {
   align-items: flex-start;
 }
 
+.plot-title-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
 .plot-card-header h3,
 .logs-summary h3,
 .map-shell-header h3,
@@ -1006,6 +1034,47 @@ body {
   gap: 6px;
 }
 
+.plot-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.plot-toolbar-hint {
+  color: var(--text-secondary);
+  font-size: 0.76rem;
+  margin-right: 4px;
+}
+
+.plot-tool-btn {
+  border: 1px solid rgba(0, 229, 255, 0.22);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-primary);
+  border-radius: 999px;
+  padding: 7px 12px;
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  cursor: pointer;
+  transition: background 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
+}
+
+.plot-tool-btn:hover:not(:disabled) {
+  background: rgba(0, 229, 255, 0.08);
+  border-color: rgba(0, 229, 255, 0.38);
+  transform: translateY(-1px);
+}
+
+.plot-tool-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.plot-tool-btn-ghost {
+  margin-top: 4px;
+  align-self: flex-start;
+}
+
 .plot-cursor-time {
   color: var(--accent-primary);
   font-family: var(--font-mono);
@@ -1026,6 +1095,249 @@ body {
   text-align: right;
 }
 
+.plot-measurement-summary {
+  color: var(--accent-success);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  margin: 2px 0 4px;
+}
+
+.plot-analysis-panel {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.025);
+  border-radius: 14px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.plot-analysis-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+}
+
+.plot-analysis-copy strong {
+  color: var(--text-primary);
+  font-size: 0.86rem;
+}
+
+.plot-overlay-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.plot-overlay-select {
+  min-width: 260px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(10, 10, 12, 0.9);
+  color: var(--text-primary);
+  padding: 9px 12px;
+  font-size: 0.78rem;
+}
+
+.plot-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+}
+
+.plot-toggle input {
+  accent-color: var(--accent-primary);
+}
+
+.plot-overlay-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.plot-overlay-chip {
+  border: 1px solid rgba(0, 255, 127, 0.22);
+  background: rgba(0, 255, 127, 0.08);
+  color: var(--text-primary);
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+
+.plot-color-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.plot-color-editor strong {
+  font-size: 0.82rem;
+}
+
+.plot-color-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.plot-color-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text-secondary);
+  font-size: 0.74rem;
+}
+
+.plot-color-chip input[type="color"] {
+  width: 24px;
+  height: 24px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.plot-card:fullscreen {
+  margin: 0;
+  border-radius: 0;
+  width: 100vw;
+  height: 100vh;
+  padding: 22px;
+  background: #09090b;
+}
+
+.plot-card:fullscreen .plot-frame {
+  min-height: 0;
+}
+
+.gg-shell {
+  border-radius: 18px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.gg-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.gg-header h3 {
+  font-size: 1rem;
+  margin-bottom: 4px;
+}
+
+.gg-header p {
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.gg-header-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.gg-body {
+  display: grid;
+  grid-template-columns: minmax(320px, 420px) 1fr;
+  gap: 18px;
+  align-items: stretch;
+}
+
+.gg-diagram-card {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  min-height: 400px;
+}
+
+.gg-diagram {
+  width: min(100%, 420px);
+  height: auto;
+}
+
+.gg-axis-label {
+  fill: rgba(255,255,255,0.62);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.gg-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  align-content: start;
+}
+
+.gg-stat-card {
+  border-radius: 14px;
+  padding: 14px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.gg-stat-card span {
+  color: var(--text-secondary);
+  font-size: 0.76rem;
+}
+
+.gg-stat-card strong {
+  font-family: var(--font-mono);
+  font-size: 1rem;
+  color: var(--text-primary);
+}
+
+.gg-slider-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.gg-slider {
+  width: 100%;
+}
+
+.gg-slider-caption {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--text-secondary);
+  font-size: 0.74rem;
+}
+
+.gg-empty {
+  min-height: 180px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
 .plot-frame {
   position: relative;
   flex: 1;
@@ -1038,8 +1350,7 @@ body {
 }
 
 .plot-empty,
-.dashboard-empty,
-.log-empty {
+.dashboard-empty {
   position: absolute;
   inset: 0;
   display: flex;
@@ -1049,6 +1360,19 @@ body {
   color: var(--text-secondary);
   font-size: 0.88rem;
   padding: 24px;
+}
+
+.log-empty-inline {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 0.88rem;
+  padding: 32px 24px;
+  border-radius: 14px;
+  border: 1px dashed rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.02);
 }
 
 .map-shell {
@@ -1331,6 +1655,8 @@ body {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  position: relative;
+  z-index: 2;
 }
 
 .logs-pane-header {
@@ -1339,6 +1665,15 @@ body {
   gap: 12px;
   align-items: flex-start;
   margin-bottom: 14px;
+}
+
+.log-picker-status {
+  color: var(--accent-primary);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding-top: 6px;
 }
 
 .logs-list {
@@ -1392,6 +1727,22 @@ body {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  position: relative;
+  z-index: 1;
+}
+
+.logs-main-empty {
+  min-height: 220px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 0.94rem;
+  padding: 32px 24px;
+  border-radius: 18px;
+  border: 1px dashed rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.02);
 }
 
 .logs-list-static {
@@ -1425,6 +1776,41 @@ body {
   color: var(--text-secondary);
   font-size: 0.78rem;
   line-height: 1.45;
+}
+
+.log-picker-panel {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(0, 229, 255, 0.12);
+  background: rgba(0, 229, 255, 0.03);
+}
+
+.log-picker-label {
+  color: var(--text-primary);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.log-picker-input {
+  width: 100%;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+}
+
+.log-picker-input::file-selector-button {
+  margin-right: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-family: var(--font-mono);
+  cursor: pointer;
 }
 
 .btn-disconnect:hover {

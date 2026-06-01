@@ -181,18 +181,19 @@ export default function MapViewer({ telemetryRef, isConnected }) {
       const data = telemetryRef.current;
 
       if (mapInstance && markerInstance && data?.gps) {
-        const hasGpsFix = Boolean(data.gps.valid) && data.gps.lat !== 0 && data.gps.lon !== 0;
-        setGpsReady(hasGpsFix);
-        markerInstance.getElement().style.opacity = hasGpsFix ? '1' : '0';
+        const hasGpsFrames = Boolean(data.gps.present) && data.gps.lat !== 0 && data.gps.lon !== 0;
+        const hasGpsFix = Boolean(data.gps.valid);
+        setGpsReady(hasGpsFrames);
+        markerInstance.getElement().style.opacity = hasGpsFrames ? '1' : '0';
         setGpsStatus(
-          hasGpsFix
+          hasGpsFrames
             ? `${data.gps.sats || 0} sats • ${Math.max(0, data.gps.vel || 0).toFixed(1)} m/s`
             : isConnected
               ? 'No live GPS frames'
               : 'Telemetry link down',
         );
 
-        if (isConnected && hasGpsFix && data.ts > lastTsRef.current) {
+        if (isConnected && hasGpsFrames && data.ts > lastTsRef.current) {
           lastTsRef.current = data.ts;
           const lngLat = [data.gps.lon, data.gps.lat];
 
@@ -271,7 +272,9 @@ export default function MapViewer({ telemetryRef, isConnected }) {
 
       <div className="track-map-overlay track-map-status">
         <div className={`track-map-pill ${isConnected ? 'is-live' : ''}`}>{isConnected ? 'LIVE LINK' : 'LINK DOWN'}</div>
-        <div className={`track-map-pill ${gpsReady ? 'is-soft' : 'is-warning'}`}>{gpsStatus}</div>
+        <div className={`track-map-pill ${gpsReady ? 'is-soft' : 'is-warning'}`}>
+          {gpsReady ? `${gpsStatus} • ${telemetryRef.current?.gps?.valid ? 'FIX OK' : 'FIX UNCONFIRMED'}` : gpsStatus}
+        </div>
         <button className="track-map-action" onClick={handleRecenter}>
           Follow Car
         </button>

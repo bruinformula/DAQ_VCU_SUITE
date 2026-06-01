@@ -489,7 +489,8 @@ class TelemetryState:
         now = time.time()
         gps_has_recent_pos = (now - self.gps_meta['position']) <= GPS_STALE_LIMIT_SEC
         gps_has_recent_nav = (now - self.gps_meta['nav']) <= GPS_STALE_LIMIT_SEC
-        gps_valid = gps_has_recent_pos and gps_has_recent_nav and bool(self.gps_fix) and self.gps_lat != 0.0 and self.gps_lon != 0.0
+        gps_present = gps_has_recent_pos and gps_has_recent_nav and self.gps_lat != 0.0 and self.gps_lon != 0.0
+        gps_valid = gps_present and bool(self.gps_fix)
         return {
             'ts': round(self.timestamp, 3),
             'gps': {
@@ -497,6 +498,7 @@ class TelemetryState:
                 'alt': round(self.gps_alt, 1), 'vel': round(self.gps_vel, 2),
                 'hdg': round(self.gps_heading, 1),
                 'fix': self.gps_fix, 'sats': self.gps_sats,
+                'present': gps_present,
                 'valid': gps_valid,
                 'rtk_state': self.gps_rtk_state,
                 'heading_source': self.gps_heading_source,
