@@ -350,7 +350,7 @@ export function useTelemetry() {
     }
   }, [clearReconnectTimer, closeSocket, stopHealthMonitor]);
 
-  const toggleLogging = useCallback(async (selectedSignalIds = []) => {
+  const toggleLogging = useCallback(async (selectedSignalIds = [], filename = '') => {
     const shouldStart = !isLogging;
     if (!targetIpRef.current) {
       throw new Error('Connect to the Pi before changing logging state.');
@@ -359,7 +359,7 @@ export function useTelemetry() {
     if (shouldStart) {
       await requestJson('/api/logging/start', {
         method: 'POST',
-        body: JSON.stringify({ signals: selectedSignalIds }),
+        body: JSON.stringify({ signals: selectedSignalIds, filename }),
       });
     } else {
       await requestJson('/api/logging/stop', { method: 'POST' });

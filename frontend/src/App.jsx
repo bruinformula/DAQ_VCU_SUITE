@@ -55,6 +55,17 @@ function formatValue(value, digits = 1) {
   return Number.isFinite(numeric) ? numeric.toFixed(digits) : '--';
 }
 
+function sanitizeLogFilenameInput(rawValue) {
+  const trimmed = (rawValue || '').trim();
+  if (!trimmed) return '';
+  const withoutExtension = trimmed.replace(/\.csv$/i, '');
+  return withoutExtension
+    .replace(/\s+/g, '_')
+    .replace(/[^A-Za-z0-9_-]/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^[_\-.]+|[_\-.]+$/g, '');
+}
+
 function App() {
   const {
     isConnected,
@@ -94,6 +105,7 @@ function App() {
   const [serialPorts, setSerialPorts] = useState([]);
   const [selectedPort, setSelectedPort] = useState('');
   const [mapPanelSize, setMapPanelSize] = useState('balanced');
+  const [logFilenameInput, setLogFilenameInput] = useState('');
 
   useEffect(() => {
     if (targetIp) {
@@ -148,7 +160,11 @@ function App() {
   const handleToggleLogging = async () => {
     setIsTogglingLog(true);
     try {
-      await toggleLogging(selectedLogSignals);
+      const sanitizedFilename = sanitizeLogFilenameInput(logFilenameInput);
+      await toggleLogging(selectedLogSignals, sanitizedFilename);
+      if (!isLogging && sanitizedFilename) {
+        setLogFilenameInput(sanitizedFilename);
+      }
     } catch (err) {
       console.error(err);
       alert(err.message || 'Unable to change logging state.');
@@ -193,6 +209,7 @@ function App() {
   }, [selectedLogSignals, isLogging, targetIp]);
 
   const currentLogFile = telemetryRef.current?.log_file || '';
+  const sanitizedPreviewFilename = sanitizeLogFilenameInput(logFilenameInput);
 
   const maxG = 2.0;
   const getImuCoords = (imus, index) => {
@@ -316,6 +333,26 @@ function App() {
           </div>
 
           <div className="log-button-container">
+            <div className="log-name-panel">
+              <label className="log-name-label" htmlFor="log-name-input">Next log filename</label>
+              <input
+                id="log-name-input"
+                className="log-name-input"
+                type="text"
+                value={logFilenameInput}
+                onChange={(event) => setLogFilenameInput(event.target.value)}
+                placeholder="BFR_Test_Day_Run_01"
+                disabled={isLogging || isTogglingLog}
+                spellCheck={false}
+                autoCapitalize="off"
+                autoCorrect="off"
+              />
+              <div className="log-name-hint">
+                {sanitizedPreviewFilename
+                  ? `Will save as ${sanitizedPreviewFilename}.csv`
+                  : 'Leave blank to use the automatic timestamp-based filename.'}
+              </div>
+            </div>
             <button
               className={`btn-log ${isLogging ? 'is-logging' : ''}`}
               onClick={handleToggleLogging}

@@ -234,6 +234,7 @@ class TelemetryState:
         # Logging state
         self.is_logging: bool = False
         self.log_signal_ids: list[str] = []
+        self.pending_log_filename: str = ""
         self.active_log_filename: str = ""
         self.active_log_directory: str = ""
 
@@ -1170,6 +1171,27 @@ def build_log_filename(timestamp: float) -> str:
     return dt.strftime('BFR_%Y-%m-%d_%I-%M-%S_%p.csv')
 
 
+def sanitize_log_filename(raw_name: str | None, timestamp: float) -> str:
+    if not raw_name:
+        return build_log_filename(timestamp)
+
+    base = str(raw_name).strip()
+    if not base:
+        return build_log_filename(timestamp)
+
+    if base.lower().endswith('.csv'):
+        base = base[:-4]
+
+    base = re.sub(r'\s+', '_', base)
+    base = re.sub(r'[^A-Za-z0-9_-]', '_', base)
+    base = re.sub(r'_+', '_', base).strip('._-')
+
+    if not base:
+        return build_log_filename(timestamp)
+
+    return f"{base}.csv"
+
+
 def encode_log_token(path: Path) -> str:
     return base64.urlsafe_b64encode(str(path).encode('utf-8')).decode('ascii')
 
@@ -1231,8 +1253,13 @@ async def loop_csv_logger():
                     print(f"[LOGGER] Found USB Drive: {active_log_dir}")
 
                 active_log_dir.mkdir(parents=True, exist_ok=True)
-                filename = build_log_filename(STATE.timestamp or time.time())
+                filename = sanitize_log_filename(STATE.pending_log_filename, STATE.timestamp or time.time())
                 filepath = active_log_dir / filename
+                if filepath.exists():
+                    stem = filepath.stem
+                    suffix = datetime.fromtimestamp(STATE.timestamp or time.time()).strftime('%I-%M-%S_%p')
+                    filename = f"{stem}_{suffix}.csv"
+                    filepath = active_log_dir / filename
                 signal_ids = list(dict.fromkeys(STATE.log_signal_ids or sorted(snapshot.keys())))
                 if 'ts' not in signal_ids:
                     signal_ids.insert(0, 'ts')
@@ -1252,6 +1279,7 @@ async def loop_csv_logger():
                     STATE.active_log_filename = filename
                     STATE.active_log_directory = str(active_log_dir)
                     STATE.log_signal_ids = signal_ids
+                    STATE.pending_log_filename = filename
                     flush_counter = 0
                     print(f"[LOGGER] Flushed {len(HISTORY_BUFFER)} pre-trigger rows.")
                     was_logging = True
@@ -1428,6 +1456,7 @@ async def get_status():
         "is_logging": STATE.is_logging,
         "active_log_filename": STATE.active_log_filename,
         "active_log_directory": STATE.active_log_directory,
+        "pending_log_filename": STATE.pending_log_filename,
         "log_signal_ids": STATE.log_signal_ids,
         "frames_parsed": STATE.frames_parsed,
         "frames_errors": STATE.frames_errors,
@@ -1461,12 +1490,15 @@ async def get_can_debug():
 @app.post("/api/logging/start")
 async def start_logging(payload: dict = Body(default={})):
     signal_ids = [signal_id for signal_id in payload.get("signals", []) if isinstance(signal_id, str)]
+    requested_filename = payload.get("filename")
+    STATE.pending_log_filename = sanitize_log_filename(requested_filename, STATE.timestamp or time.time())
     STATE.log_signal_ids = signal_ids
     STATE.is_logging = True
     return JSONResponse({
         "ok": True,
         "is_logging": STATE.is_logging,
         "log_signal_ids": STATE.log_signal_ids,
+        "pending_log_filename": STATE.pending_log_filename,
     })
 
 

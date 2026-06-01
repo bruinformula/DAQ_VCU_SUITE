@@ -372,6 +372,50 @@ body {
   background: var(--bg-primary);
 }
 
+.log-name-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.log-name-label {
+  color: var(--text-primary);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.log-name-input {
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-primary);
+  padding: 12px 14px;
+  font-family: var(--font-mono);
+  font-size: 0.84rem;
+  outline: none;
+}
+
+.log-name-input:focus {
+  border-color: rgba(0, 229, 255, 0.42);
+  box-shadow: 0 0 0 3px rgba(0, 229, 255, 0.08);
+}
+
+.log-name-input:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.log-name-hint {
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  line-height: 1.4;
+  font-family: var(--font-mono);
+}
+
 .btn-log {
   width: 100%;
   padding: 16px;
