@@ -464,12 +464,16 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
+  position: sticky;
+  top: 0;
+  z-index: 12;
 }
 
 .workspace-content {
   flex: 1;
   min-height: 0;
   padding: 16px;
+  overflow: hidden;
 }
 
 .tab-strip {
@@ -731,6 +735,85 @@ body {
   flex-wrap: wrap;
   justify-content: space-between;
   margin-top: auto;
+}
+
+.aux-board-rack {
+  display: grid;
+  grid-template-columns: 1.5fr 1fr;
+  gap: 18px;
+}
+
+.aux-board-panel {
+  border-radius: 20px;
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.aux-board-header h4 {
+  font-size: 1rem;
+  margin-bottom: 6px;
+}
+
+.aux-board-header p {
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.aux-board-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.aux-board-card,
+.flow-readout-card {
+  border-radius: 16px;
+  padding: 14px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
+  border: 1px solid rgba(255,255,255,0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.aux-board-title,
+.aux-board-footer,
+.aux-board-temps {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.aux-board-title {
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.aux-board-title span,
+.aux-board-footer span,
+.aux-board-temps span,
+.flow-readout-card span {
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+}
+
+.aux-board-title strong,
+.flow-readout-card strong {
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+}
+
+.flow-readout-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
 }
 
 .car-silhouette-shell {
@@ -1432,6 +1515,10 @@ body {
       "rl rr";
   }
 
+  .aux-board-rack {
+    grid-template-columns: 1fr;
+  }
+
   .car-silhouette-shell {
     min-height: 380px;
   }
@@ -1466,6 +1553,10 @@ body {
 
   .car-silhouette-shell {
     min-height: 320px;
+  }
+
+  .flow-readout-grid {
+    grid-template-columns: 1fr;
   }
 
   .car-silhouette {

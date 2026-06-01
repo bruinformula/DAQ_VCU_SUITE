@@ -216,9 +216,7 @@ function App() {
   const tshmu = liveData.tshmu || { flow1: 0, flow2: 0, jitter_us: 0, error_flags: 0 };
   const cornerCards = CORNER_POSITIONS.map((pos, index) => {
     const sdu = sduCorners[index] || { shock: 0, brake: 0, wrpm: 0, tire: [0, 0, 0, 0] };
-    const tspmu = tspmuCorners[index] || { p1: 0, p2: 0, temps: [0, 0, 0, 0] };
     const tireTemps = Array.isArray(sdu.tire) ? sdu.tire : [0, 0, 0, 0];
-    const pressureTemps = Array.isArray(tspmu.temps) ? tspmu.temps : [0, 0, 0, 0];
     return {
       pos,
       shock: sdu.shock || 0,
@@ -228,16 +226,16 @@ function App() {
       tireMin: tireTemps[1] || 0,
       tireCtr: tireTemps[2] || 0,
       tireAmb: tireTemps[3] || 0,
-      pressure1: tspmu.p1 || 0,
-      pressure2: tspmu.p2 || 0,
-      airTempAvg: pressureTemps.length
-        ? pressureTemps.reduce((sum, value) => sum + (Number(value) || 0), 0) / pressureTemps.length
-        : 0,
-      tempSpread: pressureTemps.length
-        ? Math.max(...pressureTemps.map(value => Number(value) || 0)) - Math.min(...pressureTemps.map(value => Number(value) || 0))
-        : 0,
     };
   });
+  const tspmuBoards = tspmuCorners
+    .map((board, index) => ({
+      boardId: index,
+      pressure1: board?.p1 || 0,
+      pressure2: board?.p2 || 0,
+      temps: Array.isArray(board?.temps) ? board.temps : [0, 0, 0, 0],
+    }))
+    .filter((board, index) => index < 2 || board.pressure1 || board.pressure2 || board.temps.some(value => value));
 
   return (
     <div className="app-container">
@@ -363,7 +361,7 @@ function App() {
                     <div>
                       <span className="atlas-kicker">Chassis Atlas</span>
                       <h3>Corner telemetry wrapped around the car</h3>
-                      <p>SDU suspension and brake signals stay attached to each wheel, with TSPMU pressure and temperature context riding alongside them.</p>
+                      <p>SDU suspension and brake signals stay attached to each wheel, while TSPMU and TSHMU stay in their own board-level panels for MDU-style consistency.</p>
                     </div>
                     <div className="atlas-center-readout">
                       <div className="atlas-center-pill">
@@ -413,19 +411,10 @@ function App() {
                           </div>
                         </div>
 
-                        <div className="corner-card-band">
-                          <div className="corner-band-title">Pressure monitor</div>
-                          <div className="corner-band-values">
-                            <span>P1 {formatValue(corner.pressure1, 2)}</span>
-                            <span>P2 {formatValue(corner.pressure2, 2)}</span>
-                            <span>dT {formatValue(corner.tempSpread, 1)} °C</span>
-                          </div>
-                        </div>
-
                         <div className="corner-card-footer">
                           <span>Ambient {formatValue(corner.tireAmb, 0)} °C</span>
-                          <span>Air Avg {formatValue(corner.airTempAvg, 1)} °C</span>
                           <span>Min {formatValue(corner.tireMin, 0)} °C</span>
+                          <span>Peak {formatValue(corner.tireMax, 0)} °C</span>
                         </div>
                       </article>
                     ))}
@@ -460,6 +449,65 @@ function App() {
                         </div>
                       </div>
                     </div>
+                  </div>
+
+                  <div className="aux-board-rack">
+                    <section className="aux-board-panel">
+                      <div className="aux-board-header">
+                        <span className="atlas-kicker">TSPMU</span>
+                        <h4>Pressure / temp boards</h4>
+                        <p>Shown by board ID for consistency with the MDU decoder. We are not force-mapping these onto corners.</p>
+                      </div>
+                      <div className="aux-board-grid">
+                        {tspmuBoards.map((board) => {
+                          const maxTemp = Math.max(...board.temps.map(value => Number(value) || 0));
+                          const minTemp = Math.min(...board.temps.map(value => Number(value) || 0));
+                          return (
+                            <article key={board.boardId} className="aux-board-card">
+                              <div className="aux-board-title">
+                                <span>Board {board.boardId}</span>
+                                <strong>P1 {formatValue(board.pressure1, 2)} • P2 {formatValue(board.pressure2, 2)}</strong>
+                              </div>
+                              <div className="aux-board-temps">
+                                {board.temps.map((temp, tempIndex) => (
+                                  <span key={tempIndex}>T{tempIndex + 1} {formatValue(temp, 1)} °C</span>
+                                ))}
+                              </div>
+                              <div className="aux-board-footer">
+                                <span>Max {formatValue(maxTemp, 1)} °C</span>
+                                <span>Min {formatValue(minTemp, 1)} °C</span>
+                              </div>
+                            </article>
+                          );
+                        })}
+                      </div>
+                    </section>
+
+                    <section className="aux-board-panel aux-board-panel-flow">
+                      <div className="aux-board-header">
+                        <span className="atlas-kicker">TSHMU</span>
+                        <h4>Flow monitor</h4>
+                        <p>Rendered from the same board packet layout we decode on the backend.</p>
+                      </div>
+                      <div className="flow-readout-grid">
+                        <div className="flow-readout-card">
+                          <span>Flow 1</span>
+                          <strong>{formatValue(tshmu.flow1, 1)} L/min</strong>
+                        </div>
+                        <div className="flow-readout-card">
+                          <span>Flow 2</span>
+                          <strong>{formatValue(tshmu.flow2, 1)} L/min</strong>
+                        </div>
+                        <div className="flow-readout-card">
+                          <span>Jitter</span>
+                          <strong>{formatValue(tshmu.jitter_us, 0)} us</strong>
+                        </div>
+                        <div className="flow-readout-card">
+                          <span>Error Flags</span>
+                          <strong>{formatValue(tshmu.error_flags, 0)}</strong>
+                        </div>
+                      </div>
+                    </section>
                   </div>
                 </section>
 

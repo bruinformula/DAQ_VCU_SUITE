@@ -47,10 +47,8 @@ function createEmptyTelemetry() {
       { pos: 'RR', shock: 0, brake: 0, wrpm: 0, tire: [0, 0, 0, 0] },
     ],
     tspmu: [
-      { pos: 'FL', p1: 0, p2: 0, temps: [0, 0, 0, 0] },
-      { pos: 'FR', p1: 0, p2: 0, temps: [0, 0, 0, 0] },
-      { pos: 'RL', p1: 0, p2: 0, temps: [0, 0, 0, 0] },
-      { pos: 'RR', p1: 0, p2: 0, temps: [0, 0, 0, 0] },
+      { boardId: 0, p1: 0, p2: 0, temps: [0, 0, 0, 0] },
+      { boardId: 1, p1: 0, p2: 0, temps: [0, 0, 0, 0] },
     ],
     tshmu: { flow1: 0, flow2: 0, jitter_us: 0, error_flags: 0 },
     log: false,

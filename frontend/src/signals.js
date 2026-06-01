@@ -368,17 +368,17 @@ export const signalGroups = [
   });
 });
 
-['FL', 'FR', 'RL', 'RR'].forEach((pos, idx) => {
+['0', '1'].forEach((boardId, idx) => {
   signalGroups.push({
     id: `tspmu_${idx}`,
-    name: `TSPMU ${pos}`,
+    name: `TSPMU Board ${boardId}`,
     signals: [
-      makeSignal(`tspmu[${idx}].p1`, `${pos} Pressure 1`, 'Pa', '#ffd670'),
-      makeSignal(`tspmu[${idx}].p2`, `${pos} Pressure 2`, 'Pa', '#ffb800'),
-      makeSignal(`tspmu[${idx}].temps[0]`, `${pos} Temp 1`, '°C', '#70d6ff'),
-      makeSignal(`tspmu[${idx}].temps[1]`, `${pos} Temp 2`, '°C', '#9bf6ff'),
-      makeSignal(`tspmu[${idx}].temps[2]`, `${pos} Temp 3`, '°C', '#8cffc1'),
-      makeSignal(`tspmu[${idx}].temps[3]`, `${pos} Temp 4`, '°C', '#caffbf'),
+      makeSignal(`tspmu[${idx}].p1`, `Board ${boardId} Pressure 1`, 'Pa', '#ffd670'),
+      makeSignal(`tspmu[${idx}].p2`, `Board ${boardId} Pressure 2`, 'Pa', '#ffb800'),
+      makeSignal(`tspmu[${idx}].temps[0]`, `Board ${boardId} Temp 1`, '°C', '#70d6ff'),
+      makeSignal(`tspmu[${idx}].temps[1]`, `Board ${boardId} Temp 2`, '°C', '#9bf6ff'),
+      makeSignal(`tspmu[${idx}].temps[2]`, `Board ${boardId} Temp 3`, '°C', '#8cffc1'),
+      makeSignal(`tspmu[${idx}].temps[3]`, `Board ${boardId} Temp 4`, '°C', '#caffbf'),
     ],
   });
 });
@@ -424,6 +424,15 @@ export function getSignalDefinition(signalId) {
 
 export function getSignalValue(data, signalId) {
   if (!data) return undefined;
+  if (signalId.startsWith('imu[')) {
+    const normalizedImu = signalId.replace(/^imu/, 'imus').replace(/\[(\d+)\]/g, '.$1');
+    const imuParts = normalizedImu.split('.');
+    let imuValue = data;
+    for (const part of imuParts) {
+      imuValue = imuValue != null ? imuValue[part] : undefined;
+    }
+    return imuValue;
+  }
   const normalized = signalId.replace(/\[(\d+)\]/g, '.$1');
   const parts = normalized.split('.');
   let value = data;
