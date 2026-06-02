@@ -859,8 +859,132 @@ def decode_tshmu_frame(can_id: int, data: bytes) -> Optional[dict[str, int | flo
     }
 
 
+def decode_gps_cog_timesync_frame(can_id: int, data: bytes) -> Optional[dict[str, int]]:
+    """Decode the mk11-smu 0x040 64-byte GPS timesync frame exactly like the MDU GUI."""
+    if can_id != 0x040 or len(data) < 64:
+        return None
+
+    return {
+        'GPS_Timestamp_Us': int.from_bytes(data[0:4], 'little'),
+        'GPS_Utc_Ms_Of_Day': int.from_bytes(data[4:8], 'little'),
+        'GPS_Utc_Date': int.from_bytes(data[8:12], 'little'),
+        'GPS_Fix_Valid': data[12],
+        'GPS_Fix_Quality': data[13],
+        'GPS_Satellites': data[14],
+        'GPS_Heading_Valid': data[15],
+        'GPS_Sentence_Count': int.from_bytes(data[16:20], 'little'),
+        'GPS_RMC_Count': int.from_bytes(data[20:24], 'little'),
+        'GPS_GGA_Count': int.from_bytes(data[24:28], 'little'),
+        'GPS_PQTMTAR_Count': int.from_bytes(data[28:32], 'little'),
+        'GPS_Error_Flags': data[63],
+    }
+
+
+def decode_gps_cog_pos_frame(can_id: int, data: bytes) -> Optional[dict[str, int | float]]:
+    """Decode the mk11-smu 0x041 64-byte GPS position frame exactly like the MDU GUI."""
+    if can_id != 0x041 or len(data) < 64:
+        return None
+
+    return {
+        'GPS_Timestamp_Us': int.from_bytes(data[0:4], 'little'),
+        'GPS_Latitude': int.from_bytes(data[4:8], 'little', signed=True) / 10000000.0,
+        'GPS_Longitude': int.from_bytes(data[8:12], 'little', signed=True) / 10000000.0,
+        'GPS_Altitude': int.from_bytes(data[12:16], 'little', signed=True) / 1000.0,
+        'GPS_HDOP': int.from_bytes(data[16:18], 'little') / 100.0,
+        'GPS_Fix_Valid': data[18],
+        'GPS_Fix_Quality': data[19],
+        'GPS_Satellites': data[20],
+        'GPS_Error_Flags': data[63],
+    }
+
+
+def decode_gps_cog_nav_frame(can_id: int, data: bytes) -> Optional[dict[str, int | float]]:
+    """Decode the mk11-smu 0x042 64-byte GPS navigation frame exactly like the MDU GUI."""
+    if can_id != 0x042 or len(data) < 64:
+        return None
+
+    return {
+        'GPS_Timestamp_Us': int.from_bytes(data[0:4], 'little'),
+        'GPS_Velocity': int.from_bytes(data[4:8], 'little') / 100.0,
+        'GPS_Course': int.from_bytes(data[8:12], 'little', signed=True) / 100.0,
+        'GPS_Heading': int.from_bytes(data[12:16], 'little', signed=True) / 100.0,
+        'GPS_Heading_Accuracy': int.from_bytes(data[16:18], 'little') / 100.0,
+        'GPS_Heading_Valid': data[18],
+        'GPS_Heading_Quality': data[19],
+        'GPS_Baseline': int.from_bytes(data[20:24], 'little') / 1000.0,
+        'GPS_Pitch': int.from_bytes(data[24:28], 'little', signed=True) / 100.0,
+        'GPS_Error_Flags': data[63],
+    }
+
+
+def decode_gps_cog_imu_frame(can_id: int, data: bytes) -> Optional[dict[str, int | float]]:
+    """Decode the mk11-smu 0x043 64-byte GPS/COG IMU frame exactly like the SMU firmware packs it."""
+    if can_id != 0x043 or len(data) < 64:
+        return None
+
+    return {
+        'IMU_Accel_X': int.from_bytes(data[4:6], 'little', signed=True) / 1000.0,
+        'IMU_Accel_Y': int.from_bytes(data[6:8], 'little', signed=True) / 1000.0,
+        'IMU_Accel_Z': int.from_bytes(data[8:10], 'little', signed=True) / 1000.0,
+        'IMU_Gyro_X': int.from_bytes(data[10:12], 'little', signed=True) / 100.0,
+        'IMU_Gyro_Y': int.from_bytes(data[12:14], 'little', signed=True) / 100.0,
+        'IMU_Gyro_Z': int.from_bytes(data[14:16], 'little', signed=True) / 100.0,
+        'IMU_Pitch': int.from_bytes(data[16:18], 'little', signed=True) / 100.0,
+        'IMU_Roll': int.from_bytes(data[18:20], 'little', signed=True) / 100.0,
+        'IMU_Yaw': int.from_bytes(data[20:22], 'little', signed=True) / 100.0,
+        'IMU_Cal_Done': data[22],
+        'GPS_IMU_Comm_Ok': data[23],
+        'GPS_IMU_Init_Ok': data[24],
+        'GPS_IMU_Error_Flags': data[63],
+    }
+
+
 def _process_can_payload(can_id: int, data: bytes) -> None:
     """Route a CAN ID + payload pair to the correct decoder."""
+    if can_id == 0x040:
+        STATE.record_can_activity(can_id, len(data))
+        decoded = decode_gps_cog_timesync_frame(can_id, data)
+        if decoded is not None:
+            STATE.apply_dbc_signals(can_id, decoded)
+        return
+
+    if can_id == 0x041:
+        STATE.record_can_activity(can_id, len(data))
+        decoded = decode_gps_cog_pos_frame(can_id, data)
+        if decoded is not None:
+            STATE.apply_dbc_signals(can_id, decoded)
+        return
+
+    if can_id == 0x042:
+        STATE.record_can_activity(can_id, len(data))
+        decoded = decode_gps_cog_nav_frame(can_id, data)
+        if decoded is not None:
+            STATE.apply_dbc_signals(can_id, decoded)
+        return
+
+    if can_id == 0x043:
+        STATE.record_can_activity(can_id, len(data))
+        decoded = decode_gps_cog_imu_frame(can_id, data)
+        if decoded is not None:
+            STATE.imu_ax = float(decoded.get('IMU_Accel_X', STATE.imu_ax))
+            STATE.imu_ay = float(decoded.get('IMU_Accel_Y', STATE.imu_ay))
+            STATE.imu_az = float(decoded.get('IMU_Accel_Z', STATE.imu_az))
+            STATE.imu_pitch = float(decoded.get('IMU_Pitch', STATE.imu_pitch))
+            STATE.imu_roll = float(decoded.get('IMU_Roll', STATE.imu_roll))
+            STATE.imu_yaw = float(decoded.get('IMU_Yaw', STATE.imu_yaw))
+            STATE.imu_cal = int(decoded.get('IMU_Cal_Done', STATE.imu_cal))
+            STATE.imus[0]['ax'] = round(STATE.imu_ax, 3)
+            STATE.imus[0]['ay'] = round(STATE.imu_ay, 3)
+            STATE.imus[0]['az'] = round(STATE.imu_az, 3)
+            STATE.imus[0]['pitch'] = round(STATE.imu_pitch, 1)
+            STATE.imus[0]['roll'] = round(STATE.imu_roll, 1)
+            STATE.imus[0]['yaw'] = round(STATE.imu_yaw, 1)
+            STATE.imus[0]['cal'] = STATE.imu_cal
+            now = time.time()
+            STATE.imu_meta[0]['accel'] = now
+            STATE.imu_meta[0]['attitude'] = now
+        return
+
     if len(data) == 64:
         sdu_info = parse_sdu_id(can_id)
         if sdu_info is not None:
@@ -1485,6 +1609,12 @@ async def get_can_debug():
         "recent_ids": recent[:64],
         "fusebox_valid": STATE.to_broadcast_dict()["fusebox"]["valid"],
     })
+
+
+@app.get("/api/debug/gps")
+async def get_gps_debug():
+    payload = STATE.to_broadcast_dict()["gps"]
+    return JSONResponse(payload)
 
 
 @app.post("/api/logging/start")
