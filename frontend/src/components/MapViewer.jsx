@@ -117,6 +117,7 @@ export default function MapViewer({ telemetryRef, isConnected }) {
   const mapContainer = useRef(null);
   const map = useRef(null);
   const marker = useRef(null);
+  const resizeObserverRef = useRef(null);
   const followCarRef = useRef(true);
   const trailCoordsRef = useRef([]);
   const lastTsRef = useRef(0);
@@ -125,13 +126,26 @@ export default function MapViewer({ telemetryRef, isConnected }) {
   const [followCar, setFollowCar] = useState(true);
   const [gpsStatus, setGpsStatus] = useState('Waiting for GPS lock');
   const [gpsReady, setGpsReady] = useState(false);
+  const [mapHealthy, setMapHealthy] = useState(false);
+  const gpsStatusRef = useRef('Waiting for GPS lock');
+  const gpsReadyRef = useRef(false);
+  const mapHealthyRef = useRef(false);
 
   useEffect(() => {
     followCarRef.current = followCar;
   }, [followCar]);
 
   useEffect(() => {
+    gpsReadyRef.current = gpsReady;
+  }, [gpsReady]);
+
+  useEffect(() => {
+    mapHealthyRef.current = mapHealthy;
+  }, [mapHealthy]);
+
+  useEffect(() => {
     if (map.current) return;
+    if (!mapContainer.current) return;
 
     const mapInstance = new maplibregl.Map({
       container: mapContainer.current,
@@ -163,33 +177,110 @@ export default function MapViewer({ telemetryRef, isConnected }) {
       .setLngLat(DEFAULT_CENTER)
       .addTo(mapInstance);
 
+    const setMapHealth = (nextHealthy) => {
+      if (mapHealthyRef.current !== nextHealthy) {
+        mapHealthyRef.current = nextHealthy;
+        setMapHealthy(nextHealthy);
+      }
+    };
+
+    const syncMapFrame = () => {
+      try {
+        ensureTrailLayer(mapInstance);
+        mapInstance.resize();
+        setMapHealth(true);
+      } catch (error) {
+        console.error('Map sync error', error);
+      }
+    };
+
+    mapInstance.on('load', () => {
+      syncMapFrame();
+    });
+
+    mapInstance.on('styledata', () => {
+      if (mapInstance.isStyleLoaded()) {
+        syncMapFrame();
+      }
+    });
+
+    mapInstance.on('idle', () => {
+      if (mapInstance.isStyleLoaded()) {
+        setMapHealth(true);
+      }
+    });
+
+    mapInstance.on('render', () => {
+      if (!mapHealthyRef.current && mapInstance.isStyleLoaded()) {
+        setMapHealth(true);
+      }
+    });
+
     mapInstance.on('load', () => {
       ensureTrailLayer(mapInstance);
     });
 
     mapInstance.on('error', (event) => {
       console.error('Map render error', event?.error || event);
-      setGpsStatus('Street map failed to load');
+      setMapHealth(false);
     });
 
     mapInstance.on('dragstart', () => {
       userMovedMapRef.current = true;
+      followCarRef.current = false;
       setFollowCar(false);
     });
     mapInstance.on('rotatestart', () => {
       userMovedMapRef.current = true;
+      followCarRef.current = false;
       setFollowCar(false);
     });
     mapInstance.on('pitchstart', () => {
       userMovedMapRef.current = true;
+      followCarRef.current = false;
       setFollowCar(false);
     });
 
+    const resizeMap = () => {
+      try {
+        mapInstance.resize();
+      } catch (error) {
+        console.error('Map resize error', error);
+      }
+    };
+
+    resizeObserverRef.current = new ResizeObserver(() => {
+      requestAnimationFrame(resizeMap);
+    });
+    resizeObserverRef.current.observe(mapContainer.current);
+    window.addEventListener('resize', resizeMap);
+
+    const resizeTimers = [
+      window.setTimeout(resizeMap, 0),
+      window.setTimeout(resizeMap, 120),
+      window.setTimeout(resizeMap, 600),
+    ];
+
     return () => {
+      resizeTimers.forEach((timerId) => window.clearTimeout(timerId));
+      window.removeEventListener('resize', resizeMap);
+      resizeObserverRef.current?.disconnect();
+      resizeObserverRef.current = null;
       mapInstance.remove();
       map.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    if (!map.current) return;
+    requestAnimationFrame(() => {
+      try {
+        map.current.resize();
+      } catch (error) {
+        console.error('Map layout refresh error', error);
+      }
+    });
+  }, [gpsReady, followCar]);
 
   useEffect(() => {
     let animationFrame;
@@ -202,19 +293,28 @@ export default function MapViewer({ telemetryRef, isConnected }) {
       if (mapInstance && markerInstance && data?.gps) {
         const hasGpsFrames = Boolean(data.gps.present) && data.gps.lat !== 0 && data.gps.lon !== 0;
         const hasGpsFix = Boolean(data.gps.valid);
-        setGpsReady(hasGpsFrames);
+        if (gpsReadyRef.current !== hasGpsFrames) {
+          gpsReadyRef.current = hasGpsFrames;
+          setGpsReady(hasGpsFrames);
+        }
         markerInstance.getElement().style.opacity = hasGpsFrames ? '1' : '0';
-        setGpsStatus(
-          hasGpsFrames
-            ? `${rtkStatusLabel(data.gps)} • ${data.gps.sats || 0} sats • HDOP ${(data.gps.hdop ?? 0).toFixed(2)} • ${Math.max(0, data.gps.vel || 0).toFixed(1)} m/s`
-            : isConnected
-              ? 'No live GPS frames'
-              : 'Telemetry link down',
-        );
+        const nextGpsStatus = hasGpsFrames
+          ? `${rtkStatusLabel(data.gps)} • ${data.gps.sats || 0} sats • HDOP ${(data.gps.hdop ?? 0).toFixed(2)} • ${Math.max(0, data.gps.vel || 0).toFixed(1)} m/s`
+          : isConnected
+            ? 'No live GPS frames'
+            : 'Telemetry link down';
+        if (gpsStatusRef.current !== nextGpsStatus) {
+          gpsStatusRef.current = nextGpsStatus;
+          setGpsStatus(nextGpsStatus);
+        }
 
         if (isConnected && hasGpsFrames && data.ts > lastTsRef.current) {
           lastTsRef.current = data.ts;
           const lngLat = [data.gps.lon, data.gps.lat];
+
+          if (mapInstance.isStyleLoaded() && !mapInstance.getSource('trail')) {
+            ensureTrailLayer(mapInstance);
+          }
 
           markerInstance.setLngLat(lngLat);
           markerInstance.setRotation(data.gps.hdg || 0);
@@ -260,6 +360,7 @@ export default function MapViewer({ telemetryRef, isConnected }) {
     }
 
     userMovedMapRef.current = false;
+    followCarRef.current = true;
     setFollowCar(true);
     mapInstance.easeTo({
       center: [data.gps.lon, data.gps.lat],
@@ -294,6 +395,9 @@ export default function MapViewer({ telemetryRef, isConnected }) {
         <div className={`track-map-pill ${gpsReady ? 'is-soft' : 'is-warning'}`}>
           {gpsReady ? `${gpsStatus} • ${telemetryRef.current?.gps?.valid ? 'FIX OK' : 'FIX UNCONFIRMED'}` : gpsStatus}
         </div>
+        {!mapHealthy ? (
+          <div className="track-map-pill is-warning">Map Rendering</div>
+        ) : null}
         <button className="track-map-action" onClick={handleRecenter}>
           Follow Car
         </button>

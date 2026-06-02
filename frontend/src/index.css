@@ -1517,6 +1517,17 @@ body {
   inset: 0;
 }
 
+.track-map-shell .maplibregl-map,
+.track-map-shell .maplibregl-canvas-container,
+.track-map-shell .maplibregl-canvas {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.track-map-shell .maplibregl-canvas {
+  filter: saturate(1.08) contrast(1.14) brightness(0.94);
+}
+
 .track-map-empty-state {
   position: absolute;
   inset: 0;
