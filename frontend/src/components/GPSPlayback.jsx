@@ -17,14 +17,18 @@ const STREET_STYLE = {
   sources: {
     osm: {
       type: 'raster',
-      tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+      tiles: [
+        'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+        'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
+        'https://b.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
+      ],
       tileSize: 256,
       attribution: '&copy; OpenStreetMap contributors',
       maxzoom: 19,
     },
   },
   layers: [
-    { id: 'background', type: 'background', paint: { 'background-color': '#0f141a' } },
+    { id: 'background', type: 'background', paint: { 'background-color': '#17232d' } },
     {
       id: 'osm-tiles',
       type: 'raster',
@@ -32,10 +36,10 @@ const STREET_STYLE = {
       minzoom: 0,
       maxzoom: 19,
       paint: {
-        'raster-saturation': -0.42,
-        'raster-contrast': 0.28,
-        'raster-brightness-min': 0.04,
-        'raster-brightness-max': 0.84,
+        'raster-saturation': -0.18,
+        'raster-contrast': 0.14,
+        'raster-brightness-min': 0.18,
+        'raster-brightness-max': 0.94,
       },
     },
   ],
@@ -62,11 +66,61 @@ function buildReplaySignalPath(points, yMin, yMax) {
   }).join(' ');
 }
 
+function buildReplayGridFeature(bounds) {
+  if (!bounds) {
+    return { type: 'FeatureCollection', features: [] };
+  }
+
+  const west = bounds.getWest();
+  const east = bounds.getEast();
+  const south = bounds.getSouth();
+  const north = bounds.getNorth();
+  const width = east - west;
+  const height = north - south;
+
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    return { type: 'FeatureCollection', features: [] };
+  }
+
+  const features = [];
+
+  const addLine = (coords) => {
+    features.push({
+      type: 'Feature',
+      geometry: {
+        type: 'LineString',
+        coordinates: coords,
+      },
+      properties: {},
+    });
+  };
+
+  addLine([[west, south], [east, south], [east, north], [west, north], [west, south]]);
+
+  for (let i = 1; i < 4; i += 1) {
+    const x = west + (width * i / 4);
+    const y = south + (height * i / 4);
+    addLine([[x, south], [x, north]]);
+    addLine([[west, y], [east, y]]);
+  }
+
+  const cx = west + width / 2;
+  const cy = south + height / 2;
+  addLine([[cx, south], [cx, north]]);
+  addLine([[west, cy], [east, cy]]);
+
+  return {
+    type: 'FeatureCollection',
+    features,
+  };
+}
+
 function updateTrackSource(map, replayPoints) {
   if (!map?.isStyleLoaded()) return;
   const pointSource = map.getSource('gps-playback-track');
   const lineSource = map.getSource('gps-playback-line');
-  if (!pointSource || !lineSource) return;
+  const gridSource = map.getSource('gps-playback-grid');
+  if (!pointSource || !lineSource || !gridSource) return;
 
   pointSource.setData({
     type: 'FeatureCollection',
@@ -96,7 +150,10 @@ function updateTrackSource(map, replayPoints) {
         [replayPoints[0].lon, replayPoints[0].lat],
       ),
     );
+    gridSource.setData(buildReplayGridFeature(bounds));
     map.fitBounds(bounds, { padding: 60, duration: 0, maxZoom: 17 });
+  } else {
+    gridSource.setData({ type: 'FeatureCollection', features: [] });
   }
 }
 
@@ -105,6 +162,7 @@ export default function GPSPlayback({ samples = [], availableSignalIds = [] }) {
   const mapRef = useRef(null);
   const mapNodeRef = useRef(null);
   const markerRef = useRef(null);
+  const resizeObserverRef = useRef(null);
   const pointsRef = useRef([]);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [playbackIndex, setPlaybackIndex] = useState(0);
@@ -113,6 +171,8 @@ export default function GPSPlayback({ samples = [], availableSignalIds = [] }) {
   const [selectedSignalIds, setSelectedSignalIds] = useState(['sdu[0].shock']);
   const [traceColors, setTraceColors] = useState({});
   const [mapLayout, setMapLayout] = useState('balanced');
+  const [mapHealthy, setMapHealthy] = useState(false);
+  const [basemapHealthy, setBasemapHealthy] = useState(false);
 
   const signalOptions = useMemo(() => (
     availableSignalIds.filter((signalId) => signalId !== 'ts')
@@ -232,6 +292,18 @@ export default function GPSPlayback({ samples = [], availableSignalIds = [] }) {
     markerEl.className = 'gps-playback-marker';
     markerRef.current = new maplibregl.Marker({ element: markerEl, rotationAlignment: 'map' }).setLngLat([-118.445, 34.068]).addTo(map);
 
+    const syncMap = () => {
+      try {
+        map.resize();
+        if (map.isStyleLoaded()) {
+          updateTrackSource(map, pointsRef.current);
+        }
+        setMapHealthy(true);
+      } catch (error) {
+        console.error('GPS playback map resize/sync error', error);
+      }
+    };
+
     map.on('load', () => {
       map.addSource('gps-playback-track', {
         type: 'geojson',
@@ -240,6 +312,20 @@ export default function GPSPlayback({ samples = [], availableSignalIds = [] }) {
       map.addSource('gps-playback-line', {
         type: 'geojson',
         data: { type: 'Feature', geometry: { type: 'LineString', coordinates: [] }, properties: {} },
+      });
+      map.addSource('gps-playback-grid', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+      });
+      map.addLayer({
+        id: 'gps-playback-grid-layer',
+        type: 'line',
+        source: 'gps-playback-grid',
+        paint: {
+          'line-color': 'rgba(134, 219, 255, 0.18)',
+          'line-width': 1.1,
+          'line-opacity': 0.92,
+        },
       });
       map.addLayer({
         id: 'gps-playback-line-glow',
@@ -283,9 +369,50 @@ export default function GPSPlayback({ samples = [], availableSignalIds = [] }) {
         setPlaybackIndex(findClosestIndexByTimestamp(timestamps, Number(targetTs)));
       });
       updateTrackSource(map, pointsRef.current);
+      setMapHealthy(true);
     });
 
+    map.on('styledata', () => {
+      if (map.isStyleLoaded()) {
+        syncMap();
+      }
+    });
+
+    map.on('sourcedata', (event) => {
+      if (event.sourceId === 'osm' && event.isSourceLoaded) {
+        setBasemapHealthy(true);
+      }
+    });
+
+    map.on('idle', () => {
+      if (map.isStyleLoaded()) {
+        setMapHealthy(true);
+      }
+    });
+
+    map.on('error', (event) => {
+      console.error('GPS playback map error', event?.error || event);
+      if (event?.sourceId === 'osm') {
+        setBasemapHealthy(false);
+      }
+    });
+
+    resizeObserverRef.current = new ResizeObserver(() => {
+      requestAnimationFrame(syncMap);
+    });
+    resizeObserverRef.current.observe(mapNodeRef.current);
+    window.addEventListener('resize', syncMap);
+    const resizeTimers = [
+      window.setTimeout(syncMap, 0),
+      window.setTimeout(syncMap, 120),
+      window.setTimeout(syncMap, 600),
+    ];
+
     return () => {
+      resizeTimers.forEach((timerId) => window.clearTimeout(timerId));
+      window.removeEventListener('resize', syncMap);
+      resizeObserverRef.current?.disconnect();
+      resizeObserverRef.current = null;
       map.remove();
       mapRef.current = null;
     };
@@ -294,6 +421,10 @@ export default function GPSPlayback({ samples = [], availableSignalIds = [] }) {
   useEffect(() => {
     updateTrackSource(mapRef.current, points);
   }, [points]);
+
+  useEffect(() => {
+    requestAnimationFrame(() => mapRef.current?.resize());
+  }, [mapLayout, isFullscreen]);
 
   const currentPoint = points[clampPlayback(playbackIndex, 0, Math.max(points.length - 1, 0))] || null;
 
@@ -449,6 +580,16 @@ export default function GPSPlayback({ samples = [], availableSignalIds = [] }) {
             <span>{currentPoint ? formatPlaybackTimestamp(currentPoint.timestamp) : '--'}</span>
             <strong>{currentPoint ? rtkStatusLabel(currentPoint.fixQuality, currentPoint.rtkState) : 'NO GPS'}</strong>
           </div>
+          {!basemapHealthy ? (
+            <div className="gps-playback-map-status gps-playback-map-status-warning">
+              Track-only fallback
+            </div>
+          ) : null}
+          {!mapHealthy ? (
+            <div className="gps-playback-map-status gps-playback-map-status-soft">
+              Rendering map
+            </div>
+          ) : null}
         </div>
 
         <div className="gps-playback-side">

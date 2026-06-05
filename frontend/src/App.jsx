@@ -3,47 +3,34 @@ import MapViewer from './components/MapViewer';
 import LogViewer from './components/LogViewer';
 import SignalBrowser from './components/SignalBrowser';
 import SignalPlot from './components/SignalPlot';
-import { liveChartGroups } from './signals';
+import { liveChartGroups, signalGroups } from './signals';
 import { useTelemetry } from './useTelemetry';
 import './index.css';
 
-const DEFAULT_LOG_SIGNALS = [
-  'bms.v',
-  'bms.i',
-  'bms.soc',
-  'bms.avg_t',
-  'bms.hi_t',
-  'bms.lo_t',
-  'bms.avg_cv',
-  'bms.hi_cv',
-  'bms.lo_cv',
-  'inv.rpm',
-  'inv.vdc',
-  'inv.idc',
-  'inv.tq_cmd',
-  'inv.tq_fb',
-  'inv.mot_t',
-  'inv.cool_t',
-  'vcu.spd',
-  'vcu.req_tq',
-  'vcu.apps1',
-  'vcu.apps2',
-  'vcu.bse',
-  'vcu.rtd',
-  'fusebox.dcdc_v',
-  'fusebox.battery_v',
-  'fusebox.lvb_soc',
-  'fusebox.dcdc_temp',
-  'imu[0].ax',
-  'imu[0].ay',
-  'imu[0].az',
-  'imu[1].ax',
-  'imu[1].ay',
-  'imu[1].az',
-  'imu[2].ax',
-  'imu[2].ay',
-  'imu[2].az',
-];
+const DEFAULT_LOG_GROUP_IDS = new Set([
+  'gps',
+  'imu',
+  'imu_triple',
+  'inv_temp',
+  'inv_current',
+  'inv_torque',
+  'inv_state',
+  'tshmu',
+  'sdu_0',
+  'sdu_1',
+  'sdu_2',
+  'sdu_3',
+  'tspmu_0',
+  'tspmu_1',
+]);
+
+const DEFAULT_LOG_SIGNALS = Array.from(
+  new Set(
+    signalGroups
+      .filter((group) => DEFAULT_LOG_GROUP_IDS.has(group.id))
+      .flatMap((group) => group.signals.map((signal) => signal.id)),
+  ),
+);
 
 const CORNER_POSITIONS = ['FL', 'FR', 'RL', 'RR'];
 
