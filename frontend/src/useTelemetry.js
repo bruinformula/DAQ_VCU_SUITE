@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { flattenTelemetryData } from './signals';
+import { decodeSerialLineToSignalUpdates } from './canLogParser';
 
 const MAX_HISTORY_POINTS = 600;
 function createEmptyTelemetry() {
@@ -52,7 +53,7 @@ function createEmptyTelemetry() {
     log: false,
     log_file: '',
     log_signal_ids: [],
-    stats: { parsed: 0, errors: 0 },
+    stats: { parsed: 0, errors: 0, bytes_per_sec: 0, average_bytes_per_sec: 0, total_bytes: 0 },
   };
 }
 
@@ -98,6 +99,34 @@ export function useTelemetry() {
     lastMessageAtRef.current = Date.now();
     setIsLogging(Boolean(data.log));
   }, []);
+
+  const applySignalUpdates = useCallback((updates) => {
+    if (!updates || !Object.keys(updates).length) {
+      return false;
+    }
+
+    const next = structuredClone(telemetryRef.current || createEmptyTelemetry());
+
+    const setByPath = (root, path, value) => {
+      const normalized = path.replace(/\[(\d+)\]/g, '.$1');
+      const parts = normalized.split('.');
+      let target = root;
+      for (let index = 0; index < parts.length - 1; index += 1) {
+        const key = parts[index];
+        if (target[key] == null) {
+          const nextKey = parts[index + 1];
+          target[key] = /^\d+$/.test(nextKey) ? [] : {};
+        }
+        target = target[key];
+      }
+      target[parts[parts.length - 1]] = value;
+    };
+
+    Object.entries(updates).forEach(([path, value]) => setByPath(next, path, value));
+    next.ts = Date.now() / 1000;
+    pushTelemetry(next);
+    return true;
+  }, [pushTelemetry]);
 
   const closeSocket = useCallback(() => {
     if (wsRef.current) {
@@ -415,6 +444,14 @@ export function useTelemetry() {
         setConnectionState('connected');
         setConnectionMessage('Streaming over serial backup.');
       } catch (err) {
+        const updates = decodeSerialLineToSignalUpdates(data);
+        if (applySignalUpdates(updates)) {
+          setIsConnected(true);
+          setActiveTransport('serial');
+          setConnectionState('connected');
+          setConnectionMessage('Streaming decoded serial board telemetry.');
+          return;
+        }
         console.error('Malformed serial telemetry frame', err);
       }
     });
@@ -435,7 +472,7 @@ export function useTelemetry() {
       closeSocket();
       window.electronAPI.disconnectSerial();
     };
-  }, [clearReconnectTimer, closeSocket, pushTelemetry, stopHealthMonitor]);
+  }, [applySignalUpdates, clearReconnectTimer, closeSocket, pushTelemetry, stopHealthMonitor]);
 
   return {
     isConnected,

@@ -3,6 +3,7 @@ import SignalPlot from './SignalPlot';
 import GGDiagram from './GGDiagram';
 import GPSPlayback from './GPSPlayback';
 import { buildChartGroupsForSignals } from '../signals';
+import { decodeRawCanLogRows, isRawCanLogHeaders } from '../canLogParser';
 
 function parseCsvLine(line) {
   const values = [];
@@ -42,6 +43,7 @@ function parseLogCsv(text, filename) {
       filename,
       headers: [],
       rows: [],
+      sourceType: 'parsed-csv',
     };
   }
 
@@ -69,10 +71,18 @@ function parseLogCsv(text, filename) {
     return sample;
   });
 
+  if (isRawCanLogHeaders(headers)) {
+    const decoded = decodeRawCanLogRows(rows, filename);
+    if ((decoded.rows || []).length > 0) {
+      return decoded;
+    }
+  }
+
   return {
     filename,
     headers,
     rows,
+    sourceType: 'parsed-csv',
   };
 }
 
@@ -206,6 +216,11 @@ export default function LogViewer() {
               <div>
                 <h3>{logData.filename}</h3>
                 <p>{logData.rows?.length || 0} rows • drag to zoom, click twice to measure, recolor overlays, full-screen any graph, replay G-G and GPS, and build your own comparison chart</p>
+                <p>
+                  {logData.sourceType === 'raw-can-decoded'
+                    ? 'Decoded from raw CAN CSV using the MDU board-frame parser before rendering the playback charts.'
+                    : 'Parsed directly from the flattened telemetry CSV.'}
+                </p>
                 <p>{logData.filePath}</p>
               </div>
             </div>

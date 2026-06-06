@@ -55,6 +55,20 @@ function formatValue(value, digits = 1) {
   return Number.isFinite(numeric) ? numeric.toFixed(digits) : '--';
 }
 
+function formatBytesPerSecond(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric < 0) {
+    return '--';
+  }
+  if (numeric >= 1024 * 1024) {
+    return `${(numeric / (1024 * 1024)).toFixed(2)} MB/s`;
+  }
+  if (numeric >= 1024) {
+    return `${(numeric / 1024).toFixed(1)} KB/s`;
+  }
+  return `${numeric.toFixed(0)} B/s`;
+}
+
 function sanitizeLogFilenameInput(rawValue) {
   const trimmed = (rawValue || '').trim();
   if (!trimmed) return '';
@@ -490,6 +504,10 @@ function App() {
                         <div className="car-overlay-pill">
                           <span>Errors</span>
                           <strong>{liveData?.stats?.errors || 0}</strong>
+                        </div>
+                        <div className="car-overlay-pill">
+                          <span>Bytes/s</span>
+                          <strong>{formatBytesPerSecond(liveData?.stats?.bytes_per_sec || 0)}</strong>
                         </div>
                       </div>
                     </div>

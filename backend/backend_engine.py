@@ -237,7 +237,7 @@ class TelemetryState:
 
         # High-rate sample queue: individual sensor samples pushed per CAN frame,
         # drained by the CSV logger each tick so every sample gets its own row.
-        self._high_rate_queue: deque = deque(maxlen=20000)
+        self._high_rate_queue: deque = deque()
 
         # Logging state
         self.is_logging: bool = False
@@ -257,6 +257,10 @@ class TelemetryState:
         # Frame counters
         self.frames_parsed: int = 0
         self.frames_errors: int = 0
+        self.total_ingress_bytes: int = 0
+        self._throughput_window: deque[tuple[float, int]] = deque()
+        self._throughput_window_bytes: int = 0
+        self._throughput_started_at: float = time.time()
 
     def update_inverter_payloads(self, signals: dict[str, float]) -> None:
         """Capture all inverter-related DBC signals for the frontend/logging layer."""
@@ -284,6 +288,29 @@ class TelemetryState:
         activity['count'] = int(activity['count']) + 1
         activity['last_seen'] = now
         activity['data_len'] = data_len
+
+        frame_bytes = max(0, int(data_len))
+        self.total_ingress_bytes += frame_bytes
+        self._throughput_window.append((now, frame_bytes))
+        self._throughput_window_bytes += frame_bytes
+        self._prune_throughput_window(now)
+
+    def _prune_throughput_window(self, now: float) -> None:
+        cutoff = now - THROUGHPUT_WINDOW_S
+        while self._throughput_window and self._throughput_window[0][0] < cutoff:
+            _, byte_count = self._throughput_window.popleft()
+            self._throughput_window_bytes -= byte_count
+
+    def get_throughput_stats(self) -> dict[str, float | int]:
+        now = time.time()
+        self._prune_throughput_window(now)
+        elapsed = max(now - self._throughput_started_at, 1e-6)
+        window = min(THROUGHPUT_WINDOW_S, elapsed)
+        return {
+            'bytes_per_sec': round(self._throughput_window_bytes / max(window, 1e-6), 1),
+            'average_bytes_per_sec': round(self.total_ingress_bytes / elapsed, 1),
+            'total_bytes': int(self.total_ingress_bytes),
+        }
 
     def apply_dbc_signals(self, can_id: int, signals: dict[str, float]) -> None:
         """Apply decoded DBC signals to the state object."""
@@ -627,6 +654,7 @@ class TelemetryState:
     def to_broadcast_dict(self) -> dict:
         """Construct the JSON payload for WebSocket broadcast."""
         now = time.time()
+        throughput = self.get_throughput_stats()
         gps_has_recent_pos = (now - self.gps_meta['position']) <= GPS_STALE_LIMIT_SEC
         gps_has_recent_nav = (now - self.gps_meta['nav']) <= GPS_STALE_LIMIT_SEC
         gps_present = gps_has_recent_pos and gps_has_recent_nav and self.gps_lat != 0.0 and self.gps_lon != 0.0
@@ -785,7 +813,13 @@ class TelemetryState:
             'log': self.is_logging,
             'log_file': self.active_log_filename,
             'log_signal_ids': self.log_signal_ids,
-            'stats': {'parsed': self.frames_parsed, 'errors': self.frames_errors},
+            'stats': {
+                'parsed': self.frames_parsed,
+                'errors': self.frames_errors,
+                'bytes_per_sec': throughput['bytes_per_sec'],
+                'average_bytes_per_sec': throughput['average_bytes_per_sec'],
+                'total_bytes': throughput['total_bytes'],
+            },
         }
 
     def to_signal_map(self) -> dict[str, float | int | bool | None]:
@@ -813,16 +847,19 @@ class TelemetryState:
 HISTORY_SECONDS = 30
 LOG_HZ = 10
 BROADCAST_HZ = 50
+THROUGHPUT_WINDOW_S = max(0.25, float(os.environ.get('THROUGHPUT_WINDOW_S', '1.0')))
 LOG_INTERVAL_S = 1.0 / LOG_HZ
 BROADCAST_INTERVAL_S = 1.0 / BROADCAST_HZ
-LOG_FLUSH_ROWS = 1
+LOG_FLUSH_ROWS = max(1, int(os.environ.get('LOG_FLUSH_ROWS', '250')))
+LOG_SYNC_INTERVAL_S = max(0.1, float(os.environ.get('LOG_SYNC_INTERVAL_S', '0.5')))
+WS_SEND_TIMEOUT_S = max(0.05, float(os.environ.get('WS_SEND_TIMEOUT_S', '0.2')))
 
 STATE = TelemetryState()
 HISTORY_BUFFER: deque[dict[str, float | int | bool | None]] = deque(maxlen=HISTORY_SECONDS * LOG_HZ)
 # Raw CAN frame log: tuples of (timestamp_s, can_id, dlc, data_hex_str)
 _CAN_RAW_TYPE = tuple[float, int, int, str]
 CAN_RAW_BUFFER: deque[_CAN_RAW_TYPE] = deque(maxlen=50_000)   # pre-trigger rolling history
-CAN_RAW_LIVE_QUEUE: deque[_CAN_RAW_TYPE] = deque(maxlen=200_000)  # drained during active logging
+CAN_RAW_LIVE_QUEUE: deque[_CAN_RAW_TYPE] = deque()  # drained during active logging without silent drops
 active_connections: list[WebSocket] = []
 
 # Use --mock flag or MOCK env var
@@ -1590,6 +1627,11 @@ def csv_row_from_snapshot(snapshot: dict[str, float | int | bool | None], signal
     return [snapshot.get(signal_id) for signal_id in signal_ids]
 
 
+def flush_and_sync_file(file_obj) -> None:
+    file_obj.flush()
+    os.fsync(file_obj.fileno())
+
+
 def parse_csv_cell(raw: str):
     if raw == '':
         return None
@@ -1614,7 +1656,9 @@ async def loop_csv_logger():
     can_csv = None
     can_writer = None
     flush_counter = 0
+    can_flush_counter = 0
     flush_every_rows = max(1, LOG_FLUSH_ROWS)
+    last_sync_at = time.monotonic()
 
     _CAN_HEADER = ['ts', 'id_hex', 'id_dec', 'dlc', 'data_hex']
 
@@ -1664,27 +1708,29 @@ async def loop_csv_logger():
                     writer = csv.writer(current_csv)
                     writer.writerow(signal_ids)
 
-                    for buffered_snapshot in HISTORY_BUFFER:
-                        writer.writerow(csv_row_from_snapshot(buffered_snapshot, signal_ids))
+                    history_rows = [csv_row_from_snapshot(buffered_snapshot, signal_ids) for buffered_snapshot in HISTORY_BUFFER]
+                    if history_rows:
+                        writer.writerows(history_rows)
 
-                    current_csv.flush()
-                    os.fsync(current_csv.fileno())
+                    await asyncio.to_thread(flush_and_sync_file, current_csv)
 
                     # Open CAN raw log and flush pre-trigger buffer
                     CAN_RAW_LIVE_QUEUE.clear()
                     can_csv = open(can_filepath, 'w', newline='')
                     can_writer = csv.writer(can_csv)
                     can_writer.writerow(_CAN_HEADER)
-                    for raw in CAN_RAW_BUFFER:
-                        can_writer.writerow(_can_row(raw))
-                    can_csv.flush()
-                    os.fsync(can_csv.fileno())
+                    can_rows = [_can_row(raw) for raw in CAN_RAW_BUFFER]
+                    if can_rows:
+                        can_writer.writerows(can_rows)
+                    await asyncio.to_thread(flush_and_sync_file, can_csv)
 
                     STATE.active_log_filename = filename
                     STATE.active_log_directory = str(active_log_dir)
                     STATE.log_signal_ids = signal_ids
                     STATE.pending_log_filename = filename
                     flush_counter = 0
+                    can_flush_counter = 0
+                    last_sync_at = time.monotonic()
                     print(f"[LOGGER] Flushed {len(HISTORY_BUFFER)} pre-trigger rows.")
                     was_logging = True
                 except Exception as e:
@@ -1695,42 +1741,49 @@ async def loop_csv_logger():
                 # Drain high-rate samples first — each gets its own row merged with the
                 # current snapshot so all non-sensor columns are populated.
                 rows_written = 0
+                parsed_rows = []
                 while STATE._high_rate_queue:
                     override = STATE._high_rate_queue.popleft()
                     merged = {**snapshot, **override}
-                    writer.writerow(csv_row_from_snapshot(merged, STATE.log_signal_ids))
+                    parsed_rows.append(csv_row_from_snapshot(merged, STATE.log_signal_ids))
                     rows_written += 1
                 # Always write at least the base snapshot row.
-                writer.writerow(csv_row_from_snapshot(snapshot, STATE.log_signal_ids))
+                parsed_rows.append(csv_row_from_snapshot(snapshot, STATE.log_signal_ids))
+                writer.writerows(parsed_rows)
                 flush_counter += rows_written + 1
-                if flush_counter >= flush_every_rows:
-                    current_csv.flush()
-                    os.fsync(current_csv.fileno())
+                sync_due = (time.monotonic() - last_sync_at) >= LOG_SYNC_INTERVAL_S
+                if flush_counter >= flush_every_rows or sync_due:
+                    await asyncio.to_thread(flush_and_sync_file, current_csv)
                     flush_counter = 0
+                    last_sync_at = time.monotonic()
 
                 # Drain raw CAN queue
                 if can_writer is not None:
-                    can_rows = 0
+                    can_rows = []
                     while CAN_RAW_LIVE_QUEUE:
-                        can_writer.writerow(_can_row(CAN_RAW_LIVE_QUEUE.popleft()))
-                        can_rows += 1
+                        can_rows.append(_can_row(CAN_RAW_LIVE_QUEUE.popleft()))
                     if can_rows:
-                        can_csv.flush()
-                        os.fsync(can_csv.fileno())
+                        can_writer.writerows(can_rows)
+                        can_flush_counter += len(can_rows)
+                    if can_rows and (can_flush_counter >= flush_every_rows or sync_due):
+                        await asyncio.to_thread(flush_and_sync_file, can_csv)
+                        can_flush_counter = 0
+                        last_sync_at = time.monotonic()
 
             elif not is_logging and was_logging:
                 print("[LOGGER] Stopped. File saved.")
                 if current_csv:
-                    current_csv.flush()
-                    os.fsync(current_csv.fileno())
+                    await asyncio.to_thread(flush_and_sync_file, current_csv)
                     current_csv.close()
                     current_csv = None
                     writer = None
                 if can_csv:
+                    pending_can_rows = []
                     while CAN_RAW_LIVE_QUEUE:
-                        can_writer.writerow(_can_row(CAN_RAW_LIVE_QUEUE.popleft()))
-                    can_csv.flush()
-                    os.fsync(can_csv.fileno())
+                        pending_can_rows.append(_can_row(CAN_RAW_LIVE_QUEUE.popleft()))
+                    if pending_can_rows:
+                        can_writer.writerows(pending_can_rows)
+                    await asyncio.to_thread(flush_and_sync_file, can_csv)
                     can_csv.close()
                     can_csv = None
                     can_writer = None
@@ -1741,14 +1794,15 @@ async def loop_csv_logger():
             await asyncio.sleep(LOG_INTERVAL_S)
     finally:
         if current_csv:
-            current_csv.flush()
-            os.fsync(current_csv.fileno())
+            await asyncio.to_thread(flush_and_sync_file, current_csv)
             current_csv.close()
         if can_csv:
+            pending_can_rows = []
             while CAN_RAW_LIVE_QUEUE:
-                can_writer.writerow(_can_row(CAN_RAW_LIVE_QUEUE.popleft()))
-            can_csv.flush()
-            os.fsync(can_csv.fileno())
+                pending_can_rows.append(_can_row(CAN_RAW_LIVE_QUEUE.popleft()))
+            if pending_can_rows:
+                can_writer.writerows(pending_can_rows)
+            await asyncio.to_thread(flush_and_sync_file, can_csv)
             can_csv.close()
 
 
@@ -1766,13 +1820,14 @@ async def loop_ws_broadcaster():
             try:
                 payload = json.dumps(STATE.to_broadcast_dict())
                 dead = []
-                for ws in active_connections:
+                for ws in tuple(active_connections):
                     try:
-                        await ws.send_text(payload)
+                        await asyncio.wait_for(ws.send_text(payload), timeout=WS_SEND_TIMEOUT_S)
                     except Exception:
                         dead.append(ws)
                 for ws in dead:
-                    active_connections.remove(ws)
+                    if ws in active_connections:
+                        active_connections.remove(ws)
             except Exception as exc:
                 print(f"[WS BROADCAST ERROR] {exc}", flush=True)
 
@@ -1891,6 +1946,7 @@ async def websocket_endpoint(websocket: WebSocket):
 @app.get("/api/status")
 async def get_status():
     """System health endpoint."""
+    throughput = STATE.get_throughput_stats()
     return JSONResponse({
         "mock_mode": MOCK_MODE,
         "is_logging": STATE.is_logging,
@@ -1900,6 +1956,9 @@ async def get_status():
         "log_signal_ids": STATE.log_signal_ids,
         "frames_parsed": STATE.frames_parsed,
         "frames_errors": STATE.frames_errors,
+        "bytes_per_sec": throughput["bytes_per_sec"],
+        "average_bytes_per_sec": throughput["average_bytes_per_sec"],
+        "total_bytes": throughput["total_bytes"],
         "buffer_size": len(HISTORY_BUFFER),
         "connected_clients": len(active_connections),
     })
