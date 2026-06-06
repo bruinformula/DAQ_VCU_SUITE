@@ -1267,24 +1267,23 @@ def _process_can_payload(can_id: int, data: bytes) -> None:
             STATE.apply_imu_fd_frame(decoded)
         return
 
-    if len(data) == 64:
-        sdu_info = parse_sdu_id(can_id)
-        if sdu_info is not None:
-            STATE.record_can_activity(can_id, len(data))
-            STATE.apply_sdu_frame(can_id, list(data))
-            return
+    sdu_info = parse_sdu_id(can_id)
+    if sdu_info is not None:
+        STATE.record_can_activity(can_id, len(data))
+        STATE.apply_sdu_frame(can_id, list(data))
+        return
 
-        tshmu_flow = decode_tshmu_frame(can_id, data)
-        if tshmu_flow is not None:
-            STATE.record_can_activity(can_id, len(data))
-            STATE.apply_tshmu_frame(tshmu_flow)
-            return
+    tshmu_flow = decode_tshmu_frame(can_id, data)
+    if tshmu_flow is not None:
+        STATE.record_can_activity(can_id, len(data))
+        STATE.apply_tshmu_frame(tshmu_flow)
+        return
 
-        tshmu_temp = decode_tshmu_temp_frame(can_id, data)
-        if tshmu_temp is not None:
-            STATE.record_can_activity(can_id, len(data))
-            STATE.apply_tshmu_temp_frame(tshmu_temp)
-            return
+    tshmu_temp = decode_tshmu_temp_frame(can_id, data)
+    if tshmu_temp is not None:
+        STATE.record_can_activity(can_id, len(data))
+        STATE.apply_tshmu_temp_frame(tshmu_temp)
+        return
 
     if 0x4F5 <= can_id <= 0x4FA:
         STATE.record_can_activity(can_id, len(data))

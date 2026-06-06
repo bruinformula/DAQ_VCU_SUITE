@@ -277,8 +277,14 @@ def decode_sdu_frame(can_id: int, data: list[int]) -> Optional[SduDecodedFrame]:
     if info is None:
         return None
 
-    if len(data) < 64:
+    if not data:
         return None
+
+    # Some bridges forward shortened FD payloads with trailing zero bytes
+    # omitted. Pad locally so board-index 3 frames like 0x098-0x09C still
+    # decode through the normal fixed-layout parser.
+    if len(data) < 64:
+        data = data + ([0] * (64 - len(data)))
 
     frame = SduDecodedFrame(
         board_type=info.board_type,
