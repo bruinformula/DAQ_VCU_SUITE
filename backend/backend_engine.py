@@ -497,21 +497,22 @@ class TelemetryState:
             if is_accel:
                 # Accel X, Y, Z as signed 16-bit little endian
                 x_mg, y_mg, z_mg = struct.unpack('<hhh', data[0:6])
-                imu['ax'] = round(x_mg / 1000.0, 3)
-                imu['ay'] = round(y_mg / 1000.0, 3)
-                imu['az'] = round(z_mg / 1000.0, 3)
-                if len(data) >= 7:
-                    imu['cal'] = int(data[6])
-                else:
-                    imu['cal'] = 0
-                imu_meta['accel'] = time.time()
+                if (time.time() - imu_meta['fd']) > 1.5:
+                    imu['ax'] = round(x_mg / 1000.0, 3)
+                    imu['ay'] = round(y_mg / 1000.0, 3)
+                    imu['az'] = round(z_mg / 1000.0, 3)
+                    if len(data) >= 7:
+                        imu['cal'] = int(data[6])
+                    else:
+                        imu['cal'] = 0
+                    imu_meta['accel'] = time.time()
 
-                # Keep legacy COG values in sync
-                if board_idx == 0:
-                    self.imu_ax = imu['ax']
-                    self.imu_ay = imu['ay']
-                    self.imu_az = imu['az']
-                    self.imu_cal = imu['cal']
+                    # Keep legacy COG values in sync
+                    if board_idx == 0:
+                        self.imu_ax = imu['ax']
+                        self.imu_ay = imu['ay']
+                        self.imu_az = imu['az']
+                        self.imu_cal = imu['cal']
             else:
                 # Attitude Pitch, Roll, Yaw as signed 16-bit little endian in centidegrees
                 pitch_cd, roll_cd, yaw_cd = struct.unpack('<hhh', data[0:6])
@@ -537,6 +538,9 @@ class TelemetryState:
         imu = self.imus[board_idx]
         # Latest sample (index 1) is the most recent
         s = decoded['samples'][-1]
+        imu['ax'] = round(s['ax'], 3)
+        imu['ay'] = round(s['ay'], 3)
+        imu['az'] = round(s['az'], 3)
         imu['vel_x'] = round(s['vel_x'], 3)
         imu['vel_y'] = round(s['vel_y'], 3)
         imu['vel_z'] = round(s['vel_z'], 3)
@@ -546,6 +550,12 @@ class TelemetryState:
         imu['gyro_x'] = round(s['gyro_x'], 2)
         imu['gyro_y'] = round(s['gyro_y'], 2)
         imu['gyro_z'] = round(s['gyro_z'], 2)
+
+        # Keep legacy COG values in sync
+        if board_idx == 0:
+            self.imu_ax = imu['ax']
+            self.imu_ay = imu['ay']
+            self.imu_az = imu['az']
 
         now = time.time()
         self.imu_meta[board_idx]['fd'] = now
@@ -983,6 +993,10 @@ def extract_binary_can_frames(buffer: bytes) -> tuple[list[tuple[int, bytes]], b
 
         can_id = buffer[start + 1] | (buffer[start + 2] << 8)
         data_length = buffer[start + 3]
+        if data_length > 64:
+            errors += 1
+            index = start + 1
+            continue
         total_length = 1 + 2 + 1 + data_length + 1
 
         if len(buffer) - start < total_length:
