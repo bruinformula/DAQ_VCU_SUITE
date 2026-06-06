@@ -34,7 +34,7 @@ from fastapi.staticfiles import StaticFiles
 
 from slcan_parser import parse_slcan_frame, SlcanFrame
 from dbc_decoder import decode_can_frame
-from sdu_decoder import decode_sdu_frame, parse_sdu_id, BOARD_TYPE_SDU, BOARD_TYPE_TSPMU
+from sdu_decoder import decode_sdu_frame, parse_sdu_id, minimum_sdu_payload_length, BOARD_TYPE_SDU, BOARD_TYPE_TSPMU
 
 SDU_STALE_LIMITS = {
     'shock_mm': 0.5,
@@ -1268,7 +1268,7 @@ def _process_can_payload(can_id: int, data: bytes) -> None:
         return
 
     sdu_info = parse_sdu_id(can_id)
-    if sdu_info is not None:
+    if sdu_info is not None and len(data) >= minimum_sdu_payload_length(sdu_info):
         STATE.record_can_activity(can_id, len(data))
         STATE.apply_sdu_frame(can_id, list(data))
         return

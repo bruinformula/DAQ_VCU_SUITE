@@ -34,6 +34,16 @@ TSPMU_TEMPERATURE = 1
 # Board position names
 BOARD_POSITIONS = {0: 'FL', 1: 'FR', 2: 'RL', 3: 'RR'}
 
+MIN_SDU_PAYLOAD_LENGTHS = {
+    (BOARD_TYPE_SDU, SENSOR_STRAIN_GAUGE): 16,
+    (BOARD_TYPE_SDU, SENSOR_SHOCK_POT): 9,
+    (BOARD_TYPE_SDU, SENSOR_BRAKE_TEMP): 9,
+    (BOARD_TYPE_SDU, SENSOR_TIRE_TEMP): 11,
+    (BOARD_TYPE_SDU, SENSOR_WHEEL_SPEED): 9,
+    (BOARD_TYPE_TSPMU, TSPMU_PRESSURE): 9,
+    (BOARD_TYPE_TSPMU, TSPMU_TEMPERATURE): 13,
+}
+
 
 @dataclass(slots=True)
 class SduFrameInfo:
@@ -128,13 +138,15 @@ def parse_sdu_id(can_id: int) -> Optional[SduFrameInfo]:
     Extract board type, index, and sensor number from an 11-bit CAN ID.
     Returns None if the ID doesn't match the SDU/TSPMU scheme.
     """
-    board_type = (can_id >> 6) & 0x0F
+    board_type = (can_id >> 6) & 0x1F
     board_index = (can_id >> 3) & 0x07
     sensor_num = can_id & 0x07
 
     if board_type not in (BOARD_TYPE_SDU, BOARD_TYPE_TSPMU):
         return None
     if board_index > 3:
+        return None
+    if (board_type, sensor_num) not in MIN_SDU_PAYLOAD_LENGTHS:
         return None
 
     return SduFrameInfo(
@@ -143,6 +155,11 @@ def parse_sdu_id(can_id: int) -> Optional[SduFrameInfo]:
         sensor_num=sensor_num,
         position=BOARD_POSITIONS.get(board_index, f'B{board_index}'),
     )
+
+
+def minimum_sdu_payload_length(info: SduFrameInfo) -> int:
+    """Return the shortest payload that can hold one valid sample block."""
+    return MIN_SDU_PAYLOAD_LENGTHS[(info.board_type, info.sensor_num)]
 
 
 def _decode_strain_gauge_blocks(data: list[int]) -> list[StrainGaugeBlock]:
@@ -277,7 +294,7 @@ def decode_sdu_frame(can_id: int, data: list[int]) -> Optional[SduDecodedFrame]:
     if info is None:
         return None
 
-    if not data:
+    if len(data) < minimum_sdu_payload_length(info):
         return None
 
     # Some bridges forward shortened FD payloads with trailing zero bytes
