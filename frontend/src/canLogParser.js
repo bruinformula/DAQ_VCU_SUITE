@@ -274,12 +274,12 @@ function decodeTshmuTempBlocks(data) {
     }
     blocks.push({
       index,
-      temp1: toSigned16(getUnsigned16LE(data, offset)) / 10.0,
-      temp2: toSigned16(getUnsigned16LE(data, offset + 2)) / 10.0,
-      temp3: toSigned16(getUnsigned16LE(data, offset + 4)) / 10.0,
-      temp4: toSigned16(getUnsigned16LE(data, offset + 6)) / 10.0,
-      temp5: toSigned16(getUnsigned16LE(data, offset + 8)) / 10.0,
-      temp6: toSigned16(getUnsigned16LE(data, offset + 10)) / 10.0,
+      temp1: toSigned16(getUnsigned16LE(data, offset)) / 1000.0,
+      temp2: toSigned16(getUnsigned16LE(data, offset + 2)) / 1000.0,
+      temp3: toSigned16(getUnsigned16LE(data, offset + 4)) / 1000.0,
+      temp4: toSigned16(getUnsigned16LE(data, offset + 6)) / 1000.0,
+      temp5: toSigned16(getUnsigned16LE(data, offset + 8)) / 1000.0,
+      temp6: toSigned16(getUnsigned16LE(data, offset + 10)) / 1000.0,
       jitterMs: toSigned8(data[offset + 12]),
     });
   }

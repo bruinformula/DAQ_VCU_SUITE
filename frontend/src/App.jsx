@@ -249,7 +249,7 @@ function App() {
   const liveData = telemetryRef.current || {};
   const sduCorners = Array.isArray(liveData.sdu) ? liveData.sdu : [];
   const tspmuCorners = Array.isArray(liveData.tspmu) ? liveData.tspmu : [];
-  const tshmu = liveData.tshmu || { flow1: 0, flow2: 0, jitter_us: 0, error_flags: 0 };
+  const tshmu = liveData.tshmu || { flow1: 0, flow2: 0, jitter_us: 0, error_flags: 0, temp1: 0, temp2: 0, temp3: 0, temp4: 0, temp5: 0, temp6: 0 };
   const cornerCards = CORNER_POSITIONS.map((pos, index) => {
     const sdu = sduCorners[index] || { shock: 0, brake: 0, wrpm: 0, tire: [0, 0, 0, 0] };
     const tireTemps = Array.isArray(sdu.tire) ? sdu.tire : [0, 0, 0, 0];
@@ -568,6 +568,14 @@ function App() {
                           <span>Error Flags</span>
                           <strong>{formatValue(tshmu.error_flags, 0)}</strong>
                         </div>
+                      </div>
+                      <div className="aux-board-temps" style={{ marginTop: '12px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                        <span>V1: {formatValue(tshmu.temp1, 3)} V</span>
+                        <span>V2: {formatValue(tshmu.temp2, 3)} V</span>
+                        <span>V3: {formatValue(tshmu.temp3, 3)} V</span>
+                        <span>V4: {formatValue(tshmu.temp4, 3)} V</span>
+                        <span>V5: {formatValue(tshmu.temp5, 3)} V</span>
+                        <span>V6: {formatValue(tshmu.temp6, 3)} V</span>
                       </div>
                     </section>
                   </div>

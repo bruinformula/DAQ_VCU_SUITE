@@ -408,12 +408,19 @@ export const signalGroups = [
 
 signalGroups.push({
   id: 'tshmu',
-  name: 'TSHMU Flow',
+  name: 'TSHMU Flow & Thermistors',
   signals: [
     makeSignal('tshmu.flow1', 'Flow 1', 'L/min', '#00e5ff'),
     makeSignal('tshmu.flow2', 'Flow 2', 'L/min', '#00ff7f'),
     makeSignal('tshmu.jitter_us', 'Flow Jitter', 'us', '#ffb800', { precision: 0 }),
     makeSignal('tshmu.error_flags', 'Flow Error Flags', 'bits', '#ff70a6', { precision: 0 }),
+    makeSignal('tshmu.temp1', 'Volt 1', 'V', '#ffaa5c', { precision: 3 }),
+    makeSignal('tshmu.temp2', 'Volt 2', 'V', '#aaff5c', { precision: 3 }),
+    makeSignal('tshmu.temp3', 'Volt 3', 'V', '#5cffaa', { precision: 3 }),
+    makeSignal('tshmu.temp4', 'Volt 4', 'V', '#5c5cff', { precision: 3 }),
+    makeSignal('tshmu.temp5', 'Volt 5', 'V', '#ff5c5c', { precision: 3 }),
+    makeSignal('tshmu.temp6', 'Volt 6', 'V', '#5cff5c', { precision: 3 }),
+    makeSignal('tshmu.temp_jitter_ms', 'Temp Jitter', 'ms', '#aaaaaa', { precision: 0 }),
   ],
 });
 
@@ -436,6 +443,7 @@ export const liveChartGroups = [
   { id: 'fusebox-voltage', title: 'Fusebox Voltages', signals: ['fusebox.dcdc_v', 'fusebox.battery_v', 'fusebox.lvb_soc'] },
   { id: 'fusebox-power', title: 'Fusebox Power Draw', signals: ['fusebox.accy_fan_power', 'fusebox.tractive_fan_power', 'fusebox.tractive_pumps_power', 'fusebox.charging_power'] },
   { id: 'fusebox-temp', title: 'Fusebox Temperatures', signals: ['fusebox.dcdc_temp', 'fusebox.ambient_temp'] },
+  { id: 'tshmu-voltage', title: 'TSHMU Voltages', signals: ['tshmu.temp1', 'tshmu.temp2', 'tshmu.temp3', 'tshmu.temp4', 'tshmu.temp5', 'tshmu.temp6'] },
   { id: 'sdu-shock-pots', title: 'Shock Pots', signals: ['sdu[0].shock', 'sdu[1].shock', 'sdu[2].shock', 'sdu[3].shock'] },
   { id: 'sdu-wheel-speed', title: 'Wheel Speeds', signals: ['sdu[0].wrpm', 'sdu[1].wrpm', 'sdu[2].wrpm', 'sdu[3].wrpm'] },
   { id: 'imu-lateral-comparison', title: 'Lateral Accel Comparison', signals: ['imu[0].ay', 'imu[1].ay', 'imu[2].ay'] },

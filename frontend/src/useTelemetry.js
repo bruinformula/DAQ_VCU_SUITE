@@ -49,7 +49,7 @@ function createEmptyTelemetry() {
       { boardId: 0, p1: 0, p2: 0, temps: [0, 0, 0, 0] },
       { boardId: 1, p1: 0, p2: 0, temps: [0, 0, 0, 0] },
     ],
-    tshmu: { flow1: 0, flow2: 0, jitter_us: 0, error_flags: 0 },
+    tshmu: { flow1: 0, flow2: 0, jitter_us: 0, error_flags: 0, temp1: 0, temp2: 0, temp3: 0, temp4: 0, temp5: 0, temp6: 0, temp_jitter_ms: 0 },
     log: false,
     log_file: '',
     log_signal_ids: [],
