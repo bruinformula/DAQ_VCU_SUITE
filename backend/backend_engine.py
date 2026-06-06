@@ -819,6 +819,10 @@ LOG_FLUSH_ROWS = 1
 
 STATE = TelemetryState()
 HISTORY_BUFFER: deque[dict[str, float | int | bool | None]] = deque(maxlen=HISTORY_SECONDS * LOG_HZ)
+# Raw CAN frame log: tuples of (timestamp_s, can_id, dlc, data_hex_str)
+_CAN_RAW_TYPE = tuple[float, int, int, str]
+CAN_RAW_BUFFER: deque[_CAN_RAW_TYPE] = deque(maxlen=50_000)   # pre-trigger rolling history
+CAN_RAW_LIVE_QUEUE: deque[_CAN_RAW_TYPE] = deque(maxlen=200_000)  # drained during active logging
 active_connections: list[WebSocket] = []
 
 # Use --mock flag or MOCK env var
@@ -1194,6 +1198,10 @@ def decode_imu_fd_frame(can_id: int, data: bytes) -> Optional[dict]:
 
 def _process_can_payload(can_id: int, data: bytes) -> None:
     """Route a CAN ID + payload pair to the correct decoder."""
+    _raw = (time.time(), can_id, len(data), data.hex())
+    CAN_RAW_BUFFER.append(_raw)
+    CAN_RAW_LIVE_QUEUE.append(_raw)
+
     if can_id == 0x040:
         STATE.record_can_activity(can_id, len(data))
         decoded = decode_gps_cog_timesync_frame(can_id, data)
@@ -1603,8 +1611,16 @@ async def loop_csv_logger():
     was_logging = False
     current_csv = None
     writer = None
+    can_csv = None
+    can_writer = None
     flush_counter = 0
     flush_every_rows = max(1, LOG_FLUSH_ROWS)
+
+    _CAN_HEADER = ['ts', 'id_hex', 'id_dec', 'dlc', 'data_hex']
+
+    def _can_row(raw):
+        ts, can_id, dlc, data_hex = raw
+        return [ts, f'0x{can_id:03X}', can_id, dlc, data_hex]
 
     try:
         while True:
@@ -1636,7 +1652,12 @@ async def loop_csv_logger():
                 if 'ts' not in signal_ids:
                     signal_ids.insert(0, 'ts')
 
+                # Derive the _CAN filename from the main filename
+                can_filename = filepath.stem + '_CAN.csv'
+                can_filepath = filepath.parent / can_filename
+
                 print(f"\n[LOGGER] TRIGGERED! Flushing buffer to {filepath}")
+                print(f"[LOGGER] Raw CAN log: {can_filepath}")
 
                 try:
                     current_csv = open(filepath, 'w', newline='')
@@ -1648,6 +1669,17 @@ async def loop_csv_logger():
 
                     current_csv.flush()
                     os.fsync(current_csv.fileno())
+
+                    # Open CAN raw log and flush pre-trigger buffer
+                    CAN_RAW_LIVE_QUEUE.clear()
+                    can_csv = open(can_filepath, 'w', newline='')
+                    can_writer = csv.writer(can_csv)
+                    can_writer.writerow(_CAN_HEADER)
+                    for raw in CAN_RAW_BUFFER:
+                        can_writer.writerow(_can_row(raw))
+                    can_csv.flush()
+                    os.fsync(can_csv.fileno())
+
                     STATE.active_log_filename = filename
                     STATE.active_log_directory = str(active_log_dir)
                     STATE.log_signal_ids = signal_ids
@@ -1676,6 +1708,16 @@ async def loop_csv_logger():
                     os.fsync(current_csv.fileno())
                     flush_counter = 0
 
+                # Drain raw CAN queue
+                if can_writer is not None:
+                    can_rows = 0
+                    while CAN_RAW_LIVE_QUEUE:
+                        can_writer.writerow(_can_row(CAN_RAW_LIVE_QUEUE.popleft()))
+                        can_rows += 1
+                    if can_rows:
+                        can_csv.flush()
+                        os.fsync(can_csv.fileno())
+
             elif not is_logging and was_logging:
                 print("[LOGGER] Stopped. File saved.")
                 if current_csv:
@@ -1684,6 +1726,14 @@ async def loop_csv_logger():
                     current_csv.close()
                     current_csv = None
                     writer = None
+                if can_csv:
+                    while CAN_RAW_LIVE_QUEUE:
+                        can_writer.writerow(_can_row(CAN_RAW_LIVE_QUEUE.popleft()))
+                    can_csv.flush()
+                    os.fsync(can_csv.fileno())
+                    can_csv.close()
+                    can_csv = None
+                    can_writer = None
                 STATE.active_log_filename = ""
                 STATE.active_log_directory = ""
                 was_logging = False
@@ -1694,6 +1744,12 @@ async def loop_csv_logger():
             current_csv.flush()
             os.fsync(current_csv.fileno())
             current_csv.close()
+        if can_csv:
+            while CAN_RAW_LIVE_QUEUE:
+                can_writer.writerow(_can_row(CAN_RAW_LIVE_QUEUE.popleft()))
+            can_csv.flush()
+            os.fsync(can_csv.fileno())
+            can_csv.close()
 
 
 # ---------------------------------------------------------------------------
