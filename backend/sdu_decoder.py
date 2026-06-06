@@ -295,25 +295,25 @@ def decode_sdu_frame(can_id: int, data: list[int]) -> Optional[SduDecodedFrame]:
             frame.sensor_type = 'strain_gauge'
             frame.strain_blocks = _decode_strain_gauge_blocks(data)
             if frame.strain_blocks:
-                frame.latest = {'channels_mv': frame.strain_blocks[0].channels_mv}
+                frame.latest = {'channels_mv': frame.strain_blocks[-1].channels_mv}
 
         elif info.sensor_num == SENSOR_SHOCK_POT:
             frame.sensor_type = 'shock_pot'
             frame.shock_samples = _decode_sensor_samples(data, 19, 100.0)
             if frame.shock_samples:
-                frame.latest = {'shock_mm': frame.shock_samples[0].value}
+                frame.latest = {'shock_mm': frame.shock_samples[-1].value}
 
         elif info.sensor_num == SENSOR_BRAKE_TEMP:
             frame.sensor_type = 'brake_temp'
             frame.brake_samples = _decode_sensor_samples(data, 19, 10.0)
             if frame.brake_samples:
-                frame.latest = {'brake_c': frame.brake_samples[0].value}
+                frame.latest = {'brake_c': frame.brake_samples[-1].value}
 
         elif info.sensor_num == SENSOR_TIRE_TEMP:
             frame.sensor_type = 'tire_temp'
             frame.tire_blocks = _decode_tire_temp_blocks(data)
             if frame.tire_blocks:
-                b = frame.tire_blocks[0]
+                b = frame.tire_blocks[-1]
                 frame.latest = {
                     'max_c': b.max_c, 'min_c': b.min_c,
                     'center_c': b.center_c, 'ambient_c': b.ambient_c,
@@ -323,7 +323,7 @@ def decode_sdu_frame(can_id: int, data: list[int]) -> Optional[SduDecodedFrame]:
             frame.sensor_type = 'wheel_speed'
             frame.wheel_samples = _decode_sensor_samples(data, 19, 10.0)
             if frame.wheel_samples:
-                frame.latest = {'wheel_rpm': frame.wheel_samples[0].value}
+                frame.latest = {'wheel_rpm': frame.wheel_samples[-1].value}
 
     elif info.board_type == BOARD_TYPE_TSPMU:
         frame.error_flags = data[62] | (data[63] << 8)
@@ -332,14 +332,14 @@ def decode_sdu_frame(can_id: int, data: list[int]) -> Optional[SduDecodedFrame]:
             frame.sensor_type = 'tspmu_pressure'
             frame.pressure_blocks = _decode_tspmu_pressure_blocks(data)
             if frame.pressure_blocks:
-                b = frame.pressure_blocks[0]
+                b = frame.pressure_blocks[-1]
                 frame.latest = {'pressure1': b.pressure1, 'pressure2': b.pressure2}
 
         elif info.sensor_num == TSPMU_TEMPERATURE:
             frame.sensor_type = 'tspmu_temperature'
             frame.temp_blocks = _decode_tspmu_temp_blocks(data)
             if frame.temp_blocks:
-                b = frame.temp_blocks[0]
+                b = frame.temp_blocks[-1]
                 frame.latest = {'temp1': b.temp1, 'temp2': b.temp2, 'temp3': b.temp3, 'temp4': b.temp4}
 
     return frame

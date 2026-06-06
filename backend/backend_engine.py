@@ -125,12 +125,16 @@ class TelemetryState:
             {
                 'ax': 0.0, 'ay': 0.0, 'az': 0.0,
                 'pitch': 0.0, 'roll': 0.0, 'yaw': 0.0,
-                'cal': 0
+                'cal': 0,
+                # IMU FD high-rate fields (from 0x043/0x04B/0x053 frames)
+                'vel_x': 0.0, 'vel_y': 0.0, 'vel_z': 0.0,
+                'ang_accel_a': 0.0, 'ang_accel_b': 0.0, 'ang_accel_c': 0.0,
+                'gyro_x': 0.0, 'gyro_y': 0.0, 'gyro_z': 0.0,
             }
             for _ in range(3)
         ]
         self.imu_meta = [
-            {'accel': 0.0, 'attitude': 0.0}
+            {'accel': 0.0, 'attitude': 0.0, 'fd': 0.0}
             for _ in range(3)
         ]
 
@@ -230,6 +234,10 @@ class TelemetryState:
             'error_flags': 0,
             'base_timestamp': 0,
         }
+
+        # High-rate sample queue: individual sensor samples pushed per CAN frame,
+        # drained by the CSV logger each tick so every sample gets its own row.
+        self._high_rate_queue: deque = deque(maxlen=20000)
 
         # Logging state
         self.is_logging: bool = False
@@ -484,6 +492,42 @@ class TelemetryState:
         except Exception as e:
             self.frames_errors += 1
 
+    def apply_imu_fd_frame(self, decoded: dict) -> None:
+        """Apply a decoded IMU FD frame (velocity, angular acceleration, gyro) to state."""
+        board_idx = decoded['board_idx']
+        if not (0 <= board_idx < 3):
+            return
+
+        imu = self.imus[board_idx]
+        # Latest sample (index 1) is the most recent
+        s = decoded['samples'][-1]
+        imu['vel_x'] = round(s['vel_x'], 3)
+        imu['vel_y'] = round(s['vel_y'], 3)
+        imu['vel_z'] = round(s['vel_z'], 3)
+        imu['ang_accel_a'] = round(s['ang_accel_a'], 2)
+        imu['ang_accel_b'] = round(s['ang_accel_b'], 2)
+        imu['ang_accel_c'] = round(s['ang_accel_c'], 2)
+        imu['gyro_x'] = round(s['gyro_x'], 2)
+        imu['gyro_y'] = round(s['gyro_y'], 2)
+        imu['gyro_z'] = round(s['gyro_z'], 2)
+
+        now = time.time()
+        self.imu_meta[board_idx]['fd'] = now
+
+        # Push both samples to the high-rate queue
+        for i, sample in enumerate(decoded['samples']):
+            self.push_high_rate_row(now - (1 - i) * 0.01, {
+                f'imu[{board_idx}].vel_x':       round(sample['vel_x'], 3),
+                f'imu[{board_idx}].vel_y':       round(sample['vel_y'], 3),
+                f'imu[{board_idx}].vel_z':       round(sample['vel_z'], 3),
+                f'imu[{board_idx}].ang_accel_a': round(sample['ang_accel_a'], 2),
+                f'imu[{board_idx}].ang_accel_b': round(sample['ang_accel_b'], 2),
+                f'imu[{board_idx}].ang_accel_c': round(sample['ang_accel_c'], 2),
+                f'imu[{board_idx}].gyro_x':      round(sample['gyro_x'], 2),
+                f'imu[{board_idx}].gyro_y':      round(sample['gyro_y'], 2),
+                f'imu[{board_idx}].gyro_z':      round(sample['gyro_z'], 2),
+            })
+
     def apply_sdu_frame(self, can_id: int, data: list[int]) -> None:
         """Apply a decoded SDU/TSPMU frame to the state."""
         decoded = decode_sdu_frame(can_id, data)
@@ -494,15 +538,28 @@ class TelemetryState:
         if decoded.board_type == BOARD_TYPE_SDU:
             board = self.sdu[decoded.board_index]
             meta = self.sdu_meta[decoded.board_index]
+            bidx = decoded.board_index
             if decoded.sensor_type == 'shock_pot' and decoded.latest:
                 board['shock_mm'] = decoded.latest.get('shock_mm', board['shock_mm'])
                 meta['shock_mm'] = now
+                n = len(decoded.shock_samples)
+                for s in decoded.shock_samples:
+                    self.push_high_rate_row(now - (n - 1 - s.index) * 0.001,
+                                           {f'sdu[{bidx}].shock': round(s.value, 2)})
             elif decoded.sensor_type == 'brake_temp' and decoded.latest:
                 board['brake_c'] = decoded.latest.get('brake_c', board['brake_c'])
                 meta['brake_c'] = now
+                n = len(decoded.brake_samples)
+                for s in decoded.brake_samples:
+                    self.push_high_rate_row(now - (n - 1 - s.index) * 0.001,
+                                           {f'sdu[{bidx}].brake': round(s.value, 1)})
             elif decoded.sensor_type == 'wheel_speed' and decoded.latest:
                 board['wheel_rpm'] = decoded.latest.get('wheel_rpm', board['wheel_rpm'])
                 meta['wheel_rpm'] = now
+                n = len(decoded.wheel_samples)
+                for s in decoded.wheel_samples:
+                    self.push_high_rate_row(now - (n - 1 - s.index) * 0.001,
+                                           {f'sdu[{bidx}].wrpm': round(s.value, 1)})
             elif decoded.sensor_type == 'tire_temp' and decoded.latest:
                 board['tire_max_c'] = decoded.latest.get('max_c', board['tire_max_c'])
                 board['tire_min_c'] = decoded.latest.get('min_c', board['tire_min_c'])
@@ -526,13 +583,46 @@ class TelemetryState:
                 board['temp4'] = decoded.latest.get('temp4', board['temp4'])
                 meta['temperature'] = now
 
-    def apply_tshmu_frame(self, decoded: dict[str, int | float]) -> None:
-        """Apply the current TSHMU flow frame layout from mk11-tshmu firmware."""
-        self.tshmu['flow1'] = float(decoded.get('flow1', self.tshmu['flow1']))
-        self.tshmu['flow2'] = float(decoded.get('flow2', self.tshmu['flow2']))
-        self.tshmu['jitter_us'] = int(decoded.get('jitter_us', self.tshmu['jitter_us']))
-        self.tshmu['error_flags'] = int(decoded.get('error_flags', self.tshmu['error_flags']))
-        self.tshmu['base_timestamp'] = int(decoded.get('base_timestamp', self.tshmu['base_timestamp']))
+    def push_high_rate_row(self, ts: float, overrides: dict) -> None:
+        """Queue one sensor sample as a CSV row (merged with base snapshot at write time)."""
+        overrides['ts'] = ts
+        self._high_rate_queue.append(overrides)
+
+    def apply_tshmu_frame(self, samples: list[dict[str, int | float]]) -> None:
+        """Apply all TSHMU flow samples. Broadcasts the latest; queues all for CSV."""
+        if not samples:
+            return
+        latest = samples[-1]
+        self.tshmu['flow1'] = float(latest.get('flow1', self.tshmu['flow1']))
+        self.tshmu['flow2'] = float(latest.get('flow2', self.tshmu['flow2']))
+        self.tshmu['jitter_us'] = int(latest.get('jitter_us', self.tshmu['jitter_us']))
+        self.tshmu['error_flags'] = int(latest.get('error_flags', self.tshmu['error_flags']))
+        self.tshmu['base_timestamp'] = int(latest.get('base_timestamp', self.tshmu['base_timestamp']))
+        now = time.time()
+        n = len(samples)
+        for i, s in enumerate(samples):
+            self.push_high_rate_row(now - (n - 1 - i) * 0.001, {
+                'tshmu.flow1': round(s['flow1'], 1),
+                'tshmu.flow2': round(s['flow2'], 1),
+                'tshmu.jitter_us': s['jitter_us'],
+            })
+
+    def apply_tshmu_temp_frame(self, blocks: list[dict[str, int | float]]) -> None:
+        """Queue all TSHMU temp blocks for CSV logging."""
+        if not blocks:
+            return
+        now = time.time()
+        n = len(blocks)
+        for i, b in enumerate(blocks):
+            self.push_high_rate_row(now - (n - 1 - i) * 0.001, {
+                'tshmu.temp1': round(b['temp1'], 1),
+                'tshmu.temp2': round(b['temp2'], 1),
+                'tshmu.temp3': round(b['temp3'], 1),
+                'tshmu.temp4': round(b['temp4'], 1),
+                'tshmu.temp5': round(b['temp5'], 1),
+                'tshmu.temp6': round(b['temp6'], 1),
+                'tshmu.temp_jitter_ms': b['jitter_ms'],
+            })
 
     def to_broadcast_dict(self) -> dict:
         """Construct the JSON payload for WebSocket broadcast."""
@@ -581,10 +671,21 @@ class TelemetryState:
                     'roll': round(imu['roll'], 1),
                     'yaw': round(imu['yaw'], 1),
                     'cal': imu['cal'],
+                    'vel_x': round(imu['vel_x'], 3),
+                    'vel_y': round(imu['vel_y'], 3),
+                    'vel_z': round(imu['vel_z'], 3),
+                    'ang_accel_a': round(imu['ang_accel_a'], 2),
+                    'ang_accel_b': round(imu['ang_accel_b'], 2),
+                    'ang_accel_c': round(imu['ang_accel_c'], 2),
+                    'gyro_x': round(imu['gyro_x'], 2),
+                    'gyro_y': round(imu['gyro_y'], 2),
+                    'gyro_z': round(imu['gyro_z'], 2),
                     'valid': (
                         (now - self.imu_meta[index]['accel']) <= IMU_STALE_LIMIT_SEC
                         or (now - self.imu_meta[index]['attitude']) <= IMU_STALE_LIMIT_SEC
+                        or (now - self.imu_meta[index]['fd']) <= IMU_STALE_LIMIT_SEC
                     ),
+                    'fd_valid': (now - self.imu_meta[index]['fd']) <= IMU_STALE_LIMIT_SEC,
                 }
                 for index, imu in enumerate(self.imus)
             ],
@@ -829,34 +930,116 @@ def extract_binary_can_frames(buffer: bytes) -> tuple[list[tuple[int, bytes]], b
     return frames, b'', errors
 
 
-def decode_tshmu_frame(can_id: int, data: bytes) -> Optional[dict[str, int | float]]:
+def decode_tshmu_frame(can_id: int, data: bytes) -> Optional[list[dict[str, int | float]]]:
     """
-    Decode the current mk11-tshmu DualFlowFDFrame_t layout.
+    Decode a mk11-tshmu DualFlowFDFrame_t (6 samples packed per 64-byte frame).
 
-    Source of truth:
-      /Users/oreoturkey/Documents/telemetry_project/mk11-tshmu/Core/Src/main.c
+    Wire format — header:
+      bytes 0-3   base_timestamp (u32 LE)
+      bytes 4-5   error_flags (u16 LE)
 
-    The checked-in firmware currently defines a single board-0 flow packet on
-    CAN ID 0x102 with:
-      bytes 0-3   base_timestamp
-      bytes 4-5   error_flags
-      bytes 6-10  first sample: flow1_u16, flow2_u16, jitter_s8
+    Wire format — per 9-byte sample block (6 blocks, starting at offset 6):
+      +0..1  raw1   (u16 LE, ADC counts)
+      +2..3  flow1  (u16 LE, /10 → LPM)
+      +4..5  raw2   (u16 LE, ADC counts)
+      +6..7  flow2  (u16 LE, /10 → LPM)
+      +8     jitter (s8, µs deviation)
+
+    Board 0 → CAN ID 0x102, Board 1 → CAN ID 0x10A.
     """
-    if can_id != 0x102 or len(data) < 11:
+    if can_id == 0x102:
+        board_id = 0
+    elif can_id == 0x10A:
+        board_id = 1
+    else:
         return None
 
-    flow1_raw = data[6] | (data[7] << 8)
-    flow2_raw = data[8] | (data[9] << 8)
-    jitter_raw = data[10]
-    jitter_us = jitter_raw - 256 if jitter_raw > 127 else jitter_raw
+    if len(data) < 15:  # header (6) + at least one full sample (9)
+        return None
 
-    return {
-        'base_timestamp': int.from_bytes(data[0:4], 'little'),
-        'error_flags': data[4] | (data[5] << 8),
-        'flow1': flow1_raw / 10.0,
-        'flow2': flow2_raw / 10.0,
-        'jitter_us': jitter_us,
-    }
+    base_ts = int.from_bytes(data[0:4], 'little')
+    error_flags = data[4] | (data[5] << 8)
+
+    samples = []
+    for i in range(6):
+        offset = 6 + i * 9
+        if offset + 8 >= len(data):
+            break
+        raw1  = data[offset]     | (data[offset + 1] << 8)
+        flow1 = (data[offset + 2] | (data[offset + 3] << 8)) / 10.0
+        raw2  = data[offset + 4] | (data[offset + 5] << 8)
+        flow2 = (data[offset + 6] | (data[offset + 7] << 8)) / 10.0
+        j = data[offset + 8]
+        samples.append({
+            'board_id': board_id,
+            'base_timestamp': base_ts,
+            'error_flags': error_flags,
+            'flow1': flow1,
+            'flow2': flow2,
+            'raw1': raw1,
+            'raw2': raw2,
+            'jitter_us': j - 256 if j > 127 else j,
+        })
+
+    return samples if samples else None
+
+
+def decode_tshmu_temp_frame(can_id: int, data: bytes) -> Optional[list[dict[str, int | float]]]:
+    """
+    Decode a mk11-tshmu TshmuTempFDFrame_t (4 blocks packed per 64-byte frame).
+
+    Wire format — header:
+      bytes 0-3   base_timestamp (u32 LE)
+      bytes 4-5   error_flags (u16 LE)
+
+    Wire format — per 13-byte block (4 blocks, starting at offset 6):
+      +0..1   temp1 (s16 LE, /10 → °C)
+      +2..3   temp2
+      +4..5   temp3
+      +6..7   temp4
+      +8..9   temp5
+      +10..11 temp6
+      +12     jitter_ms (s8)
+
+    Board 0 → CAN ID 0x103, Board 1 → CAN ID 0x10B.
+    """
+    if can_id == 0x103:
+        board_id = 0
+    elif can_id == 0x10B:
+        board_id = 1
+    else:
+        return None
+
+    if len(data) < 19:  # header (6) + at least one full block (13)
+        return None
+
+    base_ts = int.from_bytes(data[0:4], 'little')
+    error_flags = data[4] | (data[5] << 8)
+
+    def _s16(lo: int, hi: int) -> int:
+        v = lo | (hi << 8)
+        return v - 65536 if v > 32767 else v
+
+    blocks = []
+    for i in range(4):
+        offset = 6 + i * 13
+        if offset + 12 >= len(data):
+            break
+        j = data[offset + 12]
+        blocks.append({
+            'board_id': board_id,
+            'base_timestamp': base_ts,
+            'error_flags': error_flags,
+            'temp1': _s16(data[offset],      data[offset + 1])  / 10.0,
+            'temp2': _s16(data[offset + 2],  data[offset + 3])  / 10.0,
+            'temp3': _s16(data[offset + 4],  data[offset + 5])  / 10.0,
+            'temp4': _s16(data[offset + 6],  data[offset + 7])  / 10.0,
+            'temp5': _s16(data[offset + 8],  data[offset + 9])  / 10.0,
+            'temp6': _s16(data[offset + 10], data[offset + 11]) / 10.0,
+            'jitter_ms': j - 256 if j > 127 else j,
+        })
+
+    return blocks if blocks else None
 
 
 def decode_gps_cog_timesync_frame(can_id: int, data: bytes) -> Optional[dict[str, int]]:
@@ -939,6 +1122,76 @@ def decode_gps_cog_imu_frame(can_id: int, data: bytes) -> Optional[dict[str, int
     }
 
 
+def decode_imu_fd_frame(can_id: int, data: bytes) -> Optional[dict]:
+    """
+    Decode a mk11-smu IMU FD frame (2 samples, 64 bytes).
+
+    All three SMU boards transmit on IMU_FD_TX_ID = 0x040 | (boardId<<3) | 3:
+      Board 0 (GPS/COG) → 0x043
+      Board 1 (mid-IMU) → 0x04B
+      Board 2 (rear-IMU)→ 0x053
+
+    Note: CAN_SendGpsCogImu (also 0x043) is defined in firmware but never called,
+    so 0x043 is exclusively an IMU FD frame on the GPS board.
+
+    Wire layout:
+      Bytes 0-3:   s1_timestamp_us (u32 LE)
+      Byte  4:     expected_period  (u8, units: 100 µs)
+      Bytes 5-6:   error_flags      (u16 LE)
+      Bytes 7-30:  sample 1         (12 × s16 LE)
+        +0/+1   ax          (mg → /1000 → g)
+        +2/+3   ay
+        +4/+5   az
+        +6/+7   ang_accel_a (0.1 dps/s → /10 → dps/s)
+        +8/+9   ang_accel_b
+        +10/+11 ang_accel_c
+        +12/+13 vel_x       (cm/s → /100 → m/s)
+        +14/+15 vel_y
+        +16/+17 vel_z
+        +18/+19 gyro_x      (cdps → /100 → dps)
+        +20/+21 gyro_y
+        +22/+23 gyro_z
+      Bytes 31-32: jitter_us (u16 LE)
+      Bytes 33-56: sample 2  (same 12-field layout as sample 1)
+      Bytes 57-63: unused
+    """
+    if can_id not in (0x043, 0x04B, 0x053):
+        return None
+    if len(data) < 57:
+        return None
+
+    board_idx = (can_id >> 3) & 0x07  # 0 → GPS/COG, 1 → mid, 2 → rear
+
+    def _s16(buf: bytes, off: int) -> int:
+        v = buf[off] | (buf[off + 1] << 8)
+        return v - 65536 if v > 32767 else v
+
+    samples = []
+    for base in (7, 33):
+        samples.append({
+            'ax':         _s16(data, base +  0) / 1000.0,
+            'ay':         _s16(data, base +  2) / 1000.0,
+            'az':         _s16(data, base +  4) / 1000.0,
+            'ang_accel_a': _s16(data, base +  6) / 10.0,
+            'ang_accel_b': _s16(data, base +  8) / 10.0,
+            'ang_accel_c': _s16(data, base + 10) / 10.0,
+            'vel_x':      _s16(data, base + 12) / 100.0,
+            'vel_y':      _s16(data, base + 14) / 100.0,
+            'vel_z':      _s16(data, base + 16) / 100.0,
+            'gyro_x':     _s16(data, base + 18) / 100.0,
+            'gyro_y':     _s16(data, base + 20) / 100.0,
+            'gyro_z':     _s16(data, base + 22) / 100.0,
+        })
+
+    return {
+        'board_idx': board_idx,
+        'ts1_us': int.from_bytes(data[0:4], 'little'),
+        'error_flags': data[5] | (data[6] << 8),
+        'jitter_us': data[31] | (data[32] << 8),
+        'samples': samples,
+    }
+
+
 def _process_can_payload(can_id: int, data: bytes) -> None:
     """Route a CAN ID + payload pair to the correct decoder."""
     if can_id == 0x040:
@@ -962,27 +1215,11 @@ def _process_can_payload(can_id: int, data: bytes) -> None:
             STATE.apply_dbc_signals(can_id, decoded)
         return
 
-    if can_id == 0x043:
+    if can_id in (0x043, 0x04B, 0x053):
         STATE.record_can_activity(can_id, len(data))
-        decoded = decode_gps_cog_imu_frame(can_id, data)
+        decoded = decode_imu_fd_frame(can_id, data)
         if decoded is not None:
-            STATE.imu_ax = float(decoded.get('IMU_Accel_X', STATE.imu_ax))
-            STATE.imu_ay = float(decoded.get('IMU_Accel_Y', STATE.imu_ay))
-            STATE.imu_az = float(decoded.get('IMU_Accel_Z', STATE.imu_az))
-            STATE.imu_pitch = float(decoded.get('IMU_Pitch', STATE.imu_pitch))
-            STATE.imu_roll = float(decoded.get('IMU_Roll', STATE.imu_roll))
-            STATE.imu_yaw = float(decoded.get('IMU_Yaw', STATE.imu_yaw))
-            STATE.imu_cal = int(decoded.get('IMU_Cal_Done', STATE.imu_cal))
-            STATE.imus[0]['ax'] = round(STATE.imu_ax, 3)
-            STATE.imus[0]['ay'] = round(STATE.imu_ay, 3)
-            STATE.imus[0]['az'] = round(STATE.imu_az, 3)
-            STATE.imus[0]['pitch'] = round(STATE.imu_pitch, 1)
-            STATE.imus[0]['roll'] = round(STATE.imu_roll, 1)
-            STATE.imus[0]['yaw'] = round(STATE.imu_yaw, 1)
-            STATE.imus[0]['cal'] = STATE.imu_cal
-            now = time.time()
-            STATE.imu_meta[0]['accel'] = now
-            STATE.imu_meta[0]['attitude'] = now
+            STATE.apply_imu_fd_frame(decoded)
         return
 
     if len(data) == 64:
@@ -992,10 +1229,16 @@ def _process_can_payload(can_id: int, data: bytes) -> None:
             STATE.apply_sdu_frame(can_id, list(data))
             return
 
-        tshmu = decode_tshmu_frame(can_id, data)
-        if tshmu is not None:
+        tshmu_flow = decode_tshmu_frame(can_id, data)
+        if tshmu_flow is not None:
             STATE.record_can_activity(can_id, len(data))
-            STATE.apply_tshmu_frame(tshmu)
+            STATE.apply_tshmu_frame(tshmu_flow)
+            return
+
+        tshmu_temp = decode_tshmu_temp_frame(can_id, data)
+        if tshmu_temp is not None:
+            STATE.record_can_activity(can_id, len(data))
+            STATE.apply_tshmu_temp_frame(tshmu_temp)
             return
 
     if 0x4F5 <= can_id <= 0x4FA:
@@ -1412,8 +1655,17 @@ async def loop_csv_logger():
                     STATE.is_logging = False
 
             elif is_logging and was_logging and writer:
+                # Drain high-rate samples first — each gets its own row merged with the
+                # current snapshot so all non-sensor columns are populated.
+                rows_written = 0
+                while STATE._high_rate_queue:
+                    override = STATE._high_rate_queue.popleft()
+                    merged = {**snapshot, **override}
+                    writer.writerow(csv_row_from_snapshot(merged, STATE.log_signal_ids))
+                    rows_written += 1
+                # Always write at least the base snapshot row.
                 writer.writerow(csv_row_from_snapshot(snapshot, STATE.log_signal_ids))
-                flush_counter += 1
+                flush_counter += rows_written + 1
                 if flush_counter >= flush_every_rows:
                     current_csv.flush()
                     os.fsync(current_csv.fileno())
