@@ -1407,7 +1407,7 @@ async def loop_socketcan():
     print(f"[SYSTEM] SocketCAN Loop Started on {interface} using python-can.")
     
     try:
-        bus = can.interface.Bus(channel=interface, interface='socketcan')
+        bus = can.interface.Bus(channel=interface, interface='socketcan', fd=True)
     except Exception as e:
         print(f"[SOCKETCAN] Cannot bind {interface} (make sure the interface is up): {e}")
         return
