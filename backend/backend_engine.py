@@ -1608,7 +1608,12 @@ async def loop_csv_logger():
 
     try:
         while True:
-            snapshot = STATE.to_signal_map()
+            try:
+                snapshot = STATE.to_signal_map()
+            except Exception as exc:
+                print(f"[LOGGER] to_signal_map error: {exc}", flush=True)
+                await asyncio.sleep(LOG_INTERVAL_S)
+                continue
             HISTORY_BUFFER.append(snapshot)
 
             is_logging = STATE.is_logging
@@ -1702,15 +1707,18 @@ async def loop_ws_broadcaster():
     while True:
         STATE.timestamp = time.time()
         if active_connections:
-            payload = json.dumps(STATE.to_broadcast_dict())
-            dead = []
-            for ws in active_connections:
-                try:
-                    await ws.send_text(payload)
-                except Exception:
-                    dead.append(ws)
-            for ws in dead:
-                active_connections.remove(ws)
+            try:
+                payload = json.dumps(STATE.to_broadcast_dict())
+                dead = []
+                for ws in active_connections:
+                    try:
+                        await ws.send_text(payload)
+                    except Exception:
+                        dead.append(ws)
+                for ws in dead:
+                    active_connections.remove(ws)
+            except Exception as exc:
+                print(f"[WS BROADCAST ERROR] {exc}", flush=True)
 
         await asyncio.sleep(BROADCAST_INTERVAL_S)
 

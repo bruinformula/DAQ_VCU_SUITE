@@ -233,7 +233,7 @@ export function useTelemetry() {
       if (Date.now() - lastMessageAtRef.current > 15000) {
         setConnectionState((prev) => (prev === 'connected' ? 'degraded' : prev));
         setConnectionMessage((prev) => (
-          prev.startsWith('Streaming from')
+          prev.startsWith('Streaming from') && !prev.includes('waiting for fresh frames')
             ? `${prev} • waiting for fresh frames`
             : prev
         ));
