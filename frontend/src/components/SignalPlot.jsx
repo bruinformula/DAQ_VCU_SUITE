@@ -409,6 +409,51 @@ export default function SignalPlot({
       console.error('Unable to toggle plot fullscreen', error);
     }
   };
+  
+  const handleExport = async () => {
+    const rows = staticSamples
+      .map(obj => ['ts'].concat(signalIds).map(id => obj[id]))
+
+      
+    const csv = signalIds.join() + '\n'
+      + rows.map(row => row.join()).join('\n');
+
+    const options = {
+      suggestedName: 'selected-columns.csv',
+      types: [
+        {
+          description: 'Text Files',
+          accept: {
+            'text/plain': ['.csv'],
+          },
+        },
+      ],
+    };
+
+    try {
+      // 2. Open the native file picker dialog
+      // This returns a FileSystemFileHandle if the user completes the action
+      const fileHandle = await window.showSaveFilePicker(options);
+
+      // 3. Create a writable stream to write content to the file
+      const writableStream = await fileHandle.createWritable();
+
+      // 4. Write your data (supports text, Blobs, or Buffer sources)
+      await writableStream.write(csv);
+
+      // 5. Close the stream to ensure data is fully flushed and saved to disk
+      await writableStream.close();
+
+      console.log("File exported successfully!");
+    } catch (error) {
+      // Handle user cancellation or API errors gracefully
+      if (error.name === 'AbortError') {
+        console.log('User cancelled the export operation.');
+      } else {
+        console.error('An error occurred while exporting:', error);
+      }
+    }
+  }
 
   return (
     <section ref={cardRef} className="plot-card glass">
@@ -423,6 +468,7 @@ export default function SignalPlot({
               <button type="button" className="plot-tool-btn" onClick={() => panView(1)}>Pan Right</button>
               <button type="button" className="plot-tool-btn" onClick={handleResetZoom}>Reset Zoom</button>
               <button type="button" className="plot-tool-btn" onClick={toggleFullscreen}>Full Screen</button>
+              <button type="button" className="plot-tool-btn" onClick={handleExport}>Export</button>
             </div>
           ) : null}
         </div>
