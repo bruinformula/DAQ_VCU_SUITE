@@ -230,9 +230,18 @@ class TelemetryState:
         self.tshmu = {
             'flow1': 0.0,
             'flow2': 0.0,
+            'raw1': 0,
+            'raw2': 0,
             'jitter_us': 0,
             'error_flags': 0,
             'base_timestamp': 0,
+            'temp1': 0.0,
+            'temp2': 0.0,
+            'temp3': 0.0,
+            'temp4': 0.0,
+            'temp5': 0.0,
+            'temp6': 0.0,
+            'temp_jitter_ms': 0,
         }
 
         # High-rate sample queue: individual sensor samples pushed per CAN frame,
@@ -622,6 +631,8 @@ class TelemetryState:
         latest = samples[-1]
         self.tshmu['flow1'] = float(latest.get('flow1', self.tshmu['flow1']))
         self.tshmu['flow2'] = float(latest.get('flow2', self.tshmu['flow2']))
+        self.tshmu['raw1'] = int(latest.get('raw1', self.tshmu['raw1']))
+        self.tshmu['raw2'] = int(latest.get('raw2', self.tshmu['raw2']))
         self.tshmu['jitter_us'] = int(latest.get('jitter_us', self.tshmu['jitter_us']))
         self.tshmu['error_flags'] = int(latest.get('error_flags', self.tshmu['error_flags']))
         self.tshmu['base_timestamp'] = int(latest.get('base_timestamp', self.tshmu['base_timestamp']))
@@ -638,6 +649,14 @@ class TelemetryState:
         """Queue all TSHMU temp blocks for CSV logging."""
         if not blocks:
             return
+        latest = blocks[-1]
+        self.tshmu['temp1'] = float(latest.get('temp1', self.tshmu['temp1']))
+        self.tshmu['temp2'] = float(latest.get('temp2', self.tshmu['temp2']))
+        self.tshmu['temp3'] = float(latest.get('temp3', self.tshmu['temp3']))
+        self.tshmu['temp4'] = float(latest.get('temp4', self.tshmu['temp4']))
+        self.tshmu['temp5'] = float(latest.get('temp5', self.tshmu['temp5']))
+        self.tshmu['temp6'] = float(latest.get('temp6', self.tshmu['temp6']))
+        self.tshmu['temp_jitter_ms'] = int(latest.get('jitter_ms', self.tshmu['temp_jitter_ms']))
         now = time.time()
         n = len(blocks)
         for i, b in enumerate(blocks):
@@ -783,9 +802,12 @@ class TelemetryState:
                     'brake': round(b['brake_c'], 1),
                     'wrpm': round(b['wheel_rpm'], 1),
                     'tire': [b['tire_max_c'], b['tire_min_c'], b['tire_ctr_c'], b['tire_amb_c']],
+                    'strain': list(b['strain_mv']),
                     'valid': {
                         key: (now - self.sdu_meta[i][key]) <= SDU_STALE_LIMITS[key]
                         for key in ('shock_mm', 'brake_c', 'wheel_rpm', 'tire')
+                    } | {
+                        'strain_mv': (now - self.sdu_meta[i]['strain_mv']) <= 3.0,
                     },
                 }
                 for i, b in enumerate(self.sdu)
@@ -807,8 +829,17 @@ class TelemetryState:
             'tshmu': {
                 'flow1': round(self.tshmu['flow1'], 1),
                 'flow2': round(self.tshmu['flow2'], 1),
+                'raw1': self.tshmu['raw1'],
+                'raw2': self.tshmu['raw2'],
                 'jitter_us': self.tshmu['jitter_us'],
                 'error_flags': self.tshmu['error_flags'],
+                'temp1': round(self.tshmu['temp1'], 1),
+                'temp2': round(self.tshmu['temp2'], 1),
+                'temp3': round(self.tshmu['temp3'], 1),
+                'temp4': round(self.tshmu['temp4'], 1),
+                'temp5': round(self.tshmu['temp5'], 1),
+                'temp6': round(self.tshmu['temp6'], 1),
+                'temp_jitter_ms': self.tshmu['temp_jitter_ms'],
             },
             'log': self.is_logging,
             'log_file': self.active_log_filename,
@@ -1691,7 +1722,8 @@ async def loop_csv_logger():
                     suffix = datetime.fromtimestamp(STATE.timestamp or time.time()).strftime('%I-%M-%S_%p')
                     filename = f"{stem}_{suffix}.csv"
                     filepath = active_log_dir / filename
-                signal_ids = list(dict.fromkeys(STATE.log_signal_ids or sorted(snapshot.keys())))
+                selected_signal_ids = list(STATE.log_signal_ids or [])
+                signal_ids = list(dict.fromkeys(selected_signal_ids + sorted(snapshot.keys())))
                 if 'ts' not in signal_ids:
                     signal_ids.insert(0, 'ts')
 

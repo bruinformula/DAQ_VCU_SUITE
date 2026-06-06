@@ -446,7 +446,7 @@ function App() {
                           </div>
                           <div className="corner-wheel-speed">
                             <span>Wheel</span>
-                            <strong>{Math.round(corner.wheel)} RPM</strong>
+                            <strong>{formatValue(corner.wheel, 0)} RPM</strong>
                           </div>
                         </div>
 

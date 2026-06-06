@@ -40,10 +40,10 @@ function createEmptyTelemetry() {
       all: {},
     },
     sdu: [
-      { pos: 'FL', shock: 0, brake: 0, wrpm: 0, tire: [0, 0, 0, 0] },
-      { pos: 'FR', shock: 0, brake: 0, wrpm: 0, tire: [0, 0, 0, 0] },
-      { pos: 'RL', shock: 0, brake: 0, wrpm: 0, tire: [0, 0, 0, 0] },
-      { pos: 'RR', shock: 0, brake: 0, wrpm: 0, tire: [0, 0, 0, 0] },
+      { pos: 'FL', shock: 0, brake: 0, wrpm: 0, tire: [0, 0, 0, 0], strain: [0, 0, 0, 0, 0, 0], valid: { shock_mm: false, brake_c: false, wheel_rpm: false, tire: false, strain_mv: false } },
+      { pos: 'FR', shock: 0, brake: 0, wrpm: 0, tire: [0, 0, 0, 0], strain: [0, 0, 0, 0, 0, 0], valid: { shock_mm: false, brake_c: false, wheel_rpm: false, tire: false, strain_mv: false } },
+      { pos: 'RL', shock: 0, brake: 0, wrpm: 0, tire: [0, 0, 0, 0], strain: [0, 0, 0, 0, 0, 0], valid: { shock_mm: false, brake_c: false, wheel_rpm: false, tire: false, strain_mv: false } },
+      { pos: 'RR', shock: 0, brake: 0, wrpm: 0, tire: [0, 0, 0, 0], strain: [0, 0, 0, 0, 0, 0], valid: { shock_mm: false, brake_c: false, wheel_rpm: false, tire: false, strain_mv: false } },
     ],
     tspmu: [
       { boardId: 0, p1: 0, p2: 0, temps: [0, 0, 0, 0] },
@@ -122,7 +122,41 @@ export function useTelemetry() {
       target[parts[parts.length - 1]] = value;
     };
 
-    Object.entries(updates).forEach(([path, value]) => setByPath(next, path, value));
+    const markDerivedValidity = (root, path) => {
+      const sduMatch = path.match(/^sdu\[(\d+)\]\.(shock|brake|wrpm|tire(?:\[\d+\])?|strain(?:\[\d+\])?)$/);
+      if (!sduMatch) {
+        return;
+      }
+
+      const boardIndex = Number.parseInt(sduMatch[1], 10);
+      if (!Number.isInteger(boardIndex) || boardIndex < 0) {
+        return;
+      }
+
+      const board = root?.sdu?.[boardIndex];
+      if (!board) {
+        return;
+      }
+
+      board.valid = board.valid || {};
+      const signalName = sduMatch[2];
+      if (signalName === 'shock') {
+        board.valid.shock_mm = true;
+      } else if (signalName === 'brake') {
+        board.valid.brake_c = true;
+      } else if (signalName === 'wrpm') {
+        board.valid.wheel_rpm = true;
+      } else if (signalName.startsWith('tire')) {
+        board.valid.tire = true;
+      } else if (signalName.startsWith('strain')) {
+        board.valid.strain_mv = true;
+      }
+    };
+
+    Object.entries(updates).forEach(([path, value]) => {
+      setByPath(next, path, value);
+      markDerivedValidity(next, path);
+    });
     next.ts = Date.now() / 1000;
     pushTelemetry(next);
     return true;
