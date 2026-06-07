@@ -3,47 +3,11 @@ import MapViewer from './components/MapViewer';
 import LogViewer from './components/LogViewer';
 import SignalBrowser from './components/SignalBrowser';
 import SignalPlot from './components/SignalPlot';
-import { liveChartGroups } from './signals';
+import { ALL_SIGNALS, liveChartGroups } from './signals';
 import { useTelemetry } from './useTelemetry';
 import './index.css';
 
-const DEFAULT_LOG_SIGNALS = [
-  'bms.v',
-  'bms.i',
-  'bms.soc',
-  'bms.avg_t',
-  'bms.hi_t',
-  'bms.lo_t',
-  'bms.avg_cv',
-  'bms.hi_cv',
-  'bms.lo_cv',
-  'inv.rpm',
-  'inv.vdc',
-  'inv.idc',
-  'inv.tq_cmd',
-  'inv.tq_fb',
-  'inv.mot_t',
-  'inv.cool_t',
-  'vcu.spd',
-  'vcu.req_tq',
-  'vcu.apps1',
-  'vcu.apps2',
-  'vcu.bse',
-  'vcu.rtd',
-  'fusebox.dcdc_v',
-  'fusebox.battery_v',
-  'fusebox.lvb_soc',
-  'fusebox.dcdc_temp',
-  'imu[0].ax',
-  'imu[0].ay',
-  'imu[0].az',
-  'imu[1].ax',
-  'imu[1].ay',
-  'imu[1].az',
-  'imu[2].ax',
-  'imu[2].ay',
-  'imu[2].az',
-];
+const DEFAULT_LOG_SIGNALS = ALL_SIGNALS.map((signal) => signal.id);
 
 const CORNER_POSITIONS = ['FL', 'FR', 'RL', 'RR'];
 
@@ -111,7 +75,7 @@ function App() {
       { ax: 0, ay: 0, az: 0 },
     ],
   });
-  const [selectedLogSignals, setSelectedLogSignals] = useState(DEFAULT_LOG_SIGNALS);
+  const [selectedLogSignals, setSelectedLogSignals] = useState(() => DEFAULT_LOG_SIGNALS);
   const [ipAddress, setIpAddress] = useState('');
   const [isScanning, setIsScanning] = useState(false);
   const [isTogglingLog, setIsTogglingLog] = useState(false);
@@ -146,6 +110,10 @@ function App() {
         ? prev.filter(id => id !== signalId)
         : [...prev, signalId],
     );
+  };
+
+  const handleSelectAllSignals = () => {
+    setSelectedLogSignals(DEFAULT_LOG_SIGNALS);
   };
 
   const handleAutoScan = async () => {
@@ -335,6 +303,7 @@ function App() {
               telemetryRef={telemetryRef}
               selectedSignals={selectedLogSignals}
               onToggleSignal={handleToggleSignal}
+              onSelectAllSignals={handleSelectAllSignals}
             />
           </div>
 

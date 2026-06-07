@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { formatSignalValue, getSignalDefinition, getSignalValue, signalGroups } from '../signals';
 
-export default function SignalBrowser({ telemetryRef, selectedSignals, onToggleSignal }) {
+export default function SignalBrowser({ telemetryRef, selectedSignals, onToggleSignal, onSelectAllSignals }) {
   const [expandedGroups, setExpandedGroups] = useState({ bms_core: true, inv_core: true, inv_temp: true });
   const valueRefs = useRef({});
 
@@ -36,7 +36,16 @@ export default function SignalBrowser({ telemetryRef, selectedSignals, onToggleS
 
   return (
     <div className="signal-browser">
-      <h2>Log Signal Selection</h2>
+      <div className="signal-browser-header-row">
+        <h2>Log Signal Selection</h2>
+        <button
+          type="button"
+          className="toolbar-button"
+          onClick={onSelectAllSignals}
+        >
+          Select All
+        </button>
+      </div>
       <p className="signal-browser-copy">
         Pick the channels you want written into new CSV sessions. Live graphs are grouped automatically.
       </p>
