@@ -827,6 +827,34 @@ function registerIpcHandlers() {
     return null;
   });
 
+  ipcMain.handle('wifi:parse-frame', (_event, { id, dataHex }) => {
+    // Build a minimal slcan-compatible object from the WiFi JSON frame fields,
+    // then run it through the same parseSlcanToBoard used by the USB binary path.
+    if (!Number.isFinite(id) || typeof dataHex !== 'string') {
+      return { ok: false, reason: 'invalid-wifi-frame' };
+    }
+    const upperHex = dataHex.toUpperCase();
+    const dataBytes = [];
+    for (let i = 0; i < upperHex.length; i += 2) {
+      dataBytes.push(parseInt(upperHex.substring(i, i + 2), 16));
+    }
+    const identifierHex = id.toString(16).toUpperCase().padStart(3, '0');
+    const idType = id > 0x7FF ? 'extended' : 'standard';
+    const slcan = {
+      ok: true,
+      raw: `t${identifierHex}${(dataBytes.length).toString(16).padStart(2, '0')}${upperHex}`,
+      frameType: idType === 'standard' ? 't' : 'T',
+      idType,
+      identifier: id,
+      identifierHex,
+      idText: `0x${identifierHex}`,
+      dataLength: dataBytes.length,
+      dataHex: upperHex,
+      dataBytes,
+    };
+    return parseSlcanToBoard(slcan, slcan.raw);
+  });
+
   ipcMain.handle('app:get-initial-state', async () => monitor.getInitialState());
   ipcMain.handle('serial:list-ports', async () => monitor.listPorts());
   ipcMain.handle('serial:connect', async (_event, options) => monitor.connect(options));

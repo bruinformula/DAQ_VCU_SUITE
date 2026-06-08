@@ -1,5 +1,4 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
-import { parseRawCanFrame, hexToBytes } from '../utils/canDecoder';
 
 const TelemetryContext = createContext(null);
 
@@ -280,6 +279,10 @@ export function TelemetryProvider({ children }) {
   const liveStartMsRef = useRef(0);
   const liveIntervalRef = useRef(null);
 
+  // Tracks whether the USB/serial transport is currently connected.
+  // Used by WiFi-side stop logic to avoid killing the binning loop while USB is still streaming.
+  const serialConnectedRef = useRef(false);
+
   // WiFi Telemetry Refs
   const wsRef = useRef(null);
   const reconnectTimerRef = useRef(null);
@@ -514,8 +517,9 @@ export function TelemetryProvider({ children }) {
     stopHealthMonitor();
     closeSocket();
 
-    // Disconnect serial if it is active
-    window.mduDebug.disconnect();
+    // NOTE: We intentionally do NOT disconnect the USB serial port here.
+    // Both the USB (MDU binary frames) and WiFi (CAN bus frames) transports
+    // run simultaneously and merge into the same latestStateRef.
 
     targetIpRef.current = nextIp;
     setTargetIp(nextIp);
@@ -547,15 +551,21 @@ export function TelemetryProvider({ children }) {
       }
     };
 
-    socket.onmessage = (event) => {
+    socket.onmessage = async (event) => {
       if (generation !== connectGenerationRef.current) return;
       try {
         const json = JSON.parse(event.data);
-        // Expected format: { ts, id, dlc, d } where d is a hex-encoded payload
-        const canId    = json.id;
-        const dataBytes = hexToBytes(json.d);
-        const { board } = parseRawCanFrame(canId, dataBytes);
-        updateStateFromBoard(latestStateRef.current, board, canId, dataBytes);
+        // Route through the same parseSlcanToBoard path used by the USB binary parser
+        // (via the wifi:parse-frame IPC handler in main.js).
+        const parsedFrame = await window.mduDebug.parseWifiFrame(json.id, json.d ?? '');
+        if (parsedFrame && parsedFrame.ok) {
+          updateStateFromBoard(
+            latestStateRef.current,
+            parsedFrame.board,
+            parsedFrame.identifier,
+            parsedFrame.dataBytes,
+          );
+        }
         lastMessageAtRef.current = Date.now();
         setWifiState('connected');
         setWifiMessage(`Streaming from ${nextIp}.`);
@@ -626,36 +636,34 @@ export function TelemetryProvider({ children }) {
     const unsubConnection = window.mduDebug.onConnection((conn) => {
       setConnectionState(conn || { connected: false, port: null, baudRate: 115200 });
       
-      // If connected, start the live binning loop
       if (conn.connected) {
+        // USB/serial just connected (or re-connected).
+        // Mark as primary transport for the UI label, but do NOT kill WiFi —
+        // both streams run simultaneously and merge into latestStateRef.
+        serialConnectedRef.current = true;
         setActiveTransport('serial');
-        disconnectWifi(); // Disconnect wifi if serial connects
-        
         setIsLiveMode(true);
-        liveStartMsRef.current = Date.now();
-        liveBufferRef.current = [];
-        latestStateRef.current = { ...initialSignalState };
-        
-        if (liveIntervalRef.current) clearInterval(liveIntervalRef.current);
-        liveIntervalRef.current = setInterval(() => {
-          const nowMs = Date.now();
-          const tsSeconds = (nowMs - liveStartMsRef.current) / 1000;
-          
-          const row = {
-            ts: tsSeconds.toFixed(3),
-            ...latestStateRef.current
-          };
-          
-          liveBufferRef.current.push(row);
-          if (liveBufferRef.current.length > 2000) {
-            liveBufferRef.current.shift();
-          }
-          
-          setLatestValues({ ...latestStateRef.current });
-          setActiveDataset([...liveBufferRef.current]);
-        }, 100);
+
+        // Only reset the buffer/state when the binning loop isn't already running
+        // (e.g. WiFi was already streaming — just let USB data merge in).
+        if (!liveIntervalRef.current) {
+          liveStartMsRef.current = Date.now();
+          liveBufferRef.current = [];
+          latestStateRef.current = { ...initialSignalState };
+
+          liveIntervalRef.current = setInterval(() => {
+            const nowMs = Date.now();
+            const tsSeconds = (nowMs - liveStartMsRef.current) / 1000;
+            liveBufferRef.current.push({ ts: tsSeconds.toFixed(3), ...latestStateRef.current });
+            if (liveBufferRef.current.length > 2000) liveBufferRef.current.shift();
+            setLatestValues({ ...latestStateRef.current });
+            setActiveDataset([...liveBufferRef.current]);
+          }, 100);
+        }
       } else {
-        if (liveIntervalRef.current && activeTransport === 'serial') {
+        // USB/serial disconnected — only stop the binning loop if WiFi is also down.
+        serialConnectedRef.current = false;
+        if (liveIntervalRef.current && !wsRef.current) {
           clearInterval(liveIntervalRef.current);
           liveIntervalRef.current = null;
         }
@@ -670,8 +678,10 @@ export function TelemetryProvider({ children }) {
       setLogStatus(status || { active: false, filePath: null, linesWritten: 0, bytesWritten: 0 });
     });
 
+    // Always process USB frames regardless of which transport is "active".
+    // Both USB and WiFi streams write into the same latestStateRef concurrently.
     const unsubFrames = window.mduDebug.onFrames((frames) => {
-      if (Array.isArray(frames) && activeTransport === 'serial') {
+      if (Array.isArray(frames)) {
         for (const frame of frames) {
           if (frame && frame.ok) {
             updateStateFromBoard(
@@ -686,7 +696,7 @@ export function TelemetryProvider({ children }) {
     });
 
     const unsubWifiSnapshot = window.mduDebug.onWifiSnapshot((snapshot) => {
-      if (snapshot && snapshot.flat && activeTransport === 'serial') {
+      if (snapshot && snapshot.flat) {
         Object.assign(latestStateRef.current, snapshot.flat);
       }
     });
@@ -703,41 +713,38 @@ export function TelemetryProvider({ children }) {
       unsubWifiSnapshot();
       if (liveIntervalRef.current) clearInterval(liveIntervalRef.current);
     };
-  }, [activeTransport]);
+  }, []);
 
-  // WiFi binning setup effect: when WiFi gets connected, we start a similar 10Hz binning loop!
+  // WiFi binning setup effect: when WiFi connects, start (or keep) the 10 Hz binning loop.
+  // When WiFi disconnects, only stop the loop if USB/serial is also down.
   useEffect(() => {
     if (wifiState === 'connected') {
       setIsLiveMode(true);
-      liveStartMsRef.current = Date.now();
-      liveBufferRef.current = [];
-      latestStateRef.current = { ...initialSignalState };
 
-      if (liveIntervalRef.current) clearInterval(liveIntervalRef.current);
-      liveIntervalRef.current = setInterval(() => {
-        const nowMs = Date.now();
-        const tsSeconds = (nowMs - liveStartMsRef.current) / 1000;
-        
-        const row = {
-          ts: tsSeconds.toFixed(3),
-          ...latestStateRef.current
-        };
-        
-        liveBufferRef.current.push(row);
-        if (liveBufferRef.current.length > 2000) {
-          liveBufferRef.current.shift();
-        }
-        
-        setLatestValues({ ...latestStateRef.current });
-        setActiveDataset([...liveBufferRef.current]);
-      }, 100);
+      // Only reset the buffer/state when the binning loop isn't already running
+      // (e.g. USB was already streaming — just let WiFi CAN data merge in).
+      if (!liveIntervalRef.current) {
+        liveStartMsRef.current = Date.now();
+        liveBufferRef.current = [];
+        latestStateRef.current = { ...initialSignalState };
+
+        liveIntervalRef.current = setInterval(() => {
+          const nowMs = Date.now();
+          const tsSeconds = (nowMs - liveStartMsRef.current) / 1000;
+          liveBufferRef.current.push({ ts: tsSeconds.toFixed(3), ...latestStateRef.current });
+          if (liveBufferRef.current.length > 2000) liveBufferRef.current.shift();
+          setLatestValues({ ...latestStateRef.current });
+          setActiveDataset([...liveBufferRef.current]);
+        }, 100);
+      }
     } else {
-      if (liveIntervalRef.current && activeTransport === 'wifi') {
+      // WiFi dropped — only stop the binning loop if USB is also disconnected.
+      if (liveIntervalRef.current && !serialConnectedRef.current) {
         clearInterval(liveIntervalRef.current);
         liveIntervalRef.current = null;
       }
     }
-  }, [wifiState, activeTransport]);
+  }, [wifiState]);
 
   // Try auto-connecting WiFi on mount
   useEffect(() => {
@@ -768,7 +775,8 @@ export function TelemetryProvider({ children }) {
   }, []);
 
   const connectSerial = async (portPath, baudRate) => {
-    disconnectWifi(); // Disconnect wifi if connecting to serial
+    // NOTE: We intentionally do NOT disconnect WiFi here.
+    // USB (MDU binary frames) and WiFi (CAN frames) run concurrently.
     return await window.mduDebug.connect({ path: portPath, baudRate: parseInt(baudRate, 10) });
   };
 
