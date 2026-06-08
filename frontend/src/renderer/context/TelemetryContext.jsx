@@ -554,17 +554,19 @@ export function TelemetryProvider({ children }) {
     socket.onmessage = async (event) => {
       if (generation !== connectGenerationRef.current) return;
       try {
-        const json = JSON.parse(event.data);
-        // Route through the same parseSlcanToBoard path used by the USB binary parser
-        // (via the wifi:parse-frame IPC handler in main.js).
-        const parsedFrame = await window.mduDebug.parseWifiFrame(json.id, json.d ?? '');
-        if (parsedFrame && parsedFrame.ok) {
-          updateStateFromBoard(
-            latestStateRef.current,
-            parsedFrame.board,
-            parsedFrame.identifier,
-            parsedFrame.dataBytes,
-          );
+        const rawPayload = JSON.parse(event.data);
+        const frames = Array.isArray(rawPayload) ? rawPayload : [rawPayload];
+        
+        for (const json of frames) {
+          const parsedFrame = await window.mduDebug.parseWifiFrame(json.id, json.d ?? '');
+          if (parsedFrame && parsedFrame.ok) {
+            updateStateFromBoard(
+              latestStateRef.current,
+              parsedFrame.board,
+              parsedFrame.identifier,
+              parsedFrame.dataBytes,
+            );
+          }
         }
         lastMessageAtRef.current = Date.now();
         setWifiState('connected');

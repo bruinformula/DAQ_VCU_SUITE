@@ -902,7 +902,7 @@ _CAN_RAW_TYPE = tuple[float, int, int, str]
 CAN_RAW_BUFFER: deque[_CAN_RAW_TYPE] = deque(maxlen=50_000)   # pre-trigger rolling history
 CAN_RAW_LIVE_QUEUE: deque[_CAN_RAW_TYPE] = deque()  # drained during active logging without silent drops
 active_connections: list[WebSocket] = []
-RAW_FRAME_QUEUE: asyncio.Queue = asyncio.Queue(maxsize=2000)  # raw CAN frames for WS mirroring
+RAW_FRAME_QUEUE: asyncio.Queue = asyncio.Queue(maxsize=100000)  # raw CAN frames for WS mirroring
 
 # Use --mock flag or MOCK env var
 MOCK_MODE = os.environ.get('TELEMETRY_MOCK', '').lower() in ('1', 'true', 'yes')
@@ -969,10 +969,15 @@ def auto_detect_mdu_serial_ports() -> list[str]:
     if override:
         return [p.strip() for p in override.split(',') if p.strip()]
     
+    binary_override = os.environ.get('USB_BINARY_PORTS', '').strip()
+    binary_ports = [p.strip() for p in binary_override.split(',') if p.strip()]
+    
     if platform.system() == 'Darwin':
-        return sorted(glob.glob('/dev/tty.usbserial*')) + sorted(glob.glob('/dev/cu.usbserial*'))
+        candidates = sorted(glob.glob('/dev/tty.usbserial*')) + sorted(glob.glob('/dev/cu.usbserial*'))
+    else:
+        candidates = sorted(glob.glob('/dev/ttyUSB*'))
         
-    return sorted(glob.glob('/dev/ttyUSB*'))
+    return [p for p in candidates if p not in binary_ports]
 
 
 async def loop_mdu_serial_group() -> None:
@@ -2052,15 +2057,22 @@ async def loop_csv_logger():
 # ---------------------------------------------------------------------------
 
 async def loop_ws_broadcaster():
-    """Mirror raw CAN frames to all connected WebSocket clients as they arrive."""
-    print("[SYSTEM] WS Broadcaster Loop Started (raw CAN mirror mode).")
+    """Mirror raw CAN frames to all connected WebSocket clients in batches."""
+    print("[SYSTEM] WS Broadcaster Loop Started (raw CAN mirror batch mode).")
 
     while True:
         try:
-            frame_msg = await RAW_FRAME_QUEUE.get()
-            if not active_connections:
+            frames = []
+            while not RAW_FRAME_QUEUE.empty():
+                frames.append(RAW_FRAME_QUEUE.get_nowait())
+                if len(frames) >= 500:
+                    break
+            
+            if not frames or not active_connections:
+                await asyncio.sleep(0.02)
                 continue
-            payload = json.dumps(frame_msg)
+                
+            payload = json.dumps(frames)
             dead = []
             for ws in tuple(active_connections):
                 try:
@@ -2070,8 +2082,11 @@ async def loop_ws_broadcaster():
             for ws in dead:
                 if ws in active_connections:
                     active_connections.remove(ws)
+                    
+            await asyncio.sleep(0.02)
         except Exception as exc:
             print(f"[WS BROADCAST ERROR] {exc}", flush=True)
+            await asyncio.sleep(1)
 
 
 # ---------------------------------------------------------------------------
