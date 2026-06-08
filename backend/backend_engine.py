@@ -1380,6 +1380,9 @@ async def loop_binary_serial_port(port: str, baudrate: int) -> None:
                 for can_id, payload in parsed_frames:
                     try:
                         _process_can_payload(can_id, payload)
+                        # Mirror the raw binary frame to WiFi WebSocket clients
+                        # (same as loop_mdu_serial and loop_socketcan already do).
+                        _enqueue_raw_frame(can_id, len(payload), payload.hex().upper())
                         STATE.frames_parsed += 1
                     except Exception:
                         STATE.frames_errors += 1
