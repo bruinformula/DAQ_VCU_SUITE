@@ -987,12 +987,20 @@ async def loop_mdu_serial_group() -> None:
 
 
 def auto_detect_binary_serial_ports() -> list[str]:
-    """Find candidate STM32 ACM ports that emit binary CAN mirror frames."""
-    ports = sorted(glob.glob('/dev/ttyACM*'))
+    """
+    Find candidate ports that emit binary CAN mirror frames.
+    These are distinct from the SLCAN text ports used by loop_mdu_serial_group.
+
+    Priority:
+      1. USB_BINARY_PORTS env var (comma-separated) — explicit override, no dedup needed.
+      2. Otherwise: /dev/ttyUSB* only (binary bridge dongles), since /dev/ttyACM*
+         ports are already claimed by loop_mdu_serial_group for SLCAN text.
+    """
     include = os.environ.get('USB_BINARY_PORTS', '').strip()
     if include:
         return [port.strip() for port in include.split(',') if port.strip()]
-    return ports
+    # Fall back to USB dongle ports; ttyACM* are reserved for SLCAN text.
+    return sorted(glob.glob('/dev/ttyUSB*'))
 
 
 def extract_binary_can_frames(buffer: bytes) -> tuple[list[tuple[int, bytes]], bytes, int]:
