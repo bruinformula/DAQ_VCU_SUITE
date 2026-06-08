@@ -902,6 +902,7 @@ _CAN_RAW_TYPE = tuple[float, int, int, str]
 CAN_RAW_BUFFER: deque[_CAN_RAW_TYPE] = deque(maxlen=50_000)   # pre-trigger rolling history
 CAN_RAW_LIVE_QUEUE: deque[_CAN_RAW_TYPE] = deque()  # drained during active logging without silent drops
 active_connections: list[WebSocket] = []
+RAW_FRAME_QUEUE: asyncio.Queue = asyncio.Queue(maxsize=2000)  # raw CAN frames for WS mirroring
 
 # Use --mock flag or MOCK env var
 MOCK_MODE = os.environ.get('TELEMETRY_MOCK', '').lower() in ('1', 'true', 'yes')
@@ -1438,6 +1439,7 @@ async def loop_socketcan():
             can_id = msg.arbitration_id
             data = bytes(msg.data)
             _process_can_payload(can_id, data)
+            _enqueue_raw_frame(can_id, len(data), data.hex().upper())
             STATE.frames_parsed += 1
                 
         except asyncio.CancelledError:
@@ -1449,9 +1451,18 @@ async def loop_socketcan():
 
 
 
+def _enqueue_raw_frame(can_id: int, dlc: int, data_hex: str) -> None:
+    """Push a raw CAN frame into the WebSocket broadcast queue (non-blocking, drops if full)."""
+    try:
+        RAW_FRAME_QUEUE.put_nowait({'ts': round(time.time(), 4), 'id': can_id, 'dlc': dlc, 'd': data_hex})
+    except asyncio.QueueFull:
+        pass  # slow clients — drop rather than block
+
+
 def _process_frame(frame: SlcanFrame) -> None:
     """Route a parsed SLCAN frame to the correct decoder."""
     _process_can_payload(frame.identifier, bytes(frame.data_bytes))
+    _enqueue_raw_frame(frame.identifier, frame.data_length, frame.data_hex)
 
 
 # ---------------------------------------------------------------------------
@@ -1856,27 +1867,26 @@ async def loop_csv_logger():
 # ---------------------------------------------------------------------------
 
 async def loop_ws_broadcaster():
-    """Push 50Hz JSON to all connected clients."""
-    print("[SYSTEM] WS Broadcaster Loop Started.")
+    """Mirror raw CAN frames to all connected WebSocket clients as they arrive."""
+    print("[SYSTEM] WS Broadcaster Loop Started (raw CAN mirror mode).")
 
     while True:
-        STATE.timestamp = time.time()
-        if active_connections:
-            try:
-                payload = json.dumps(STATE.to_broadcast_dict())
-                dead = []
-                for ws in tuple(active_connections):
-                    try:
-                        await asyncio.wait_for(ws.send_text(payload), timeout=WS_SEND_TIMEOUT_S)
-                    except Exception:
-                        dead.append(ws)
-                for ws in dead:
-                    if ws in active_connections:
-                        active_connections.remove(ws)
-            except Exception as exc:
-                print(f"[WS BROADCAST ERROR] {exc}", flush=True)
-
-        await asyncio.sleep(BROADCAST_INTERVAL_S)
+        try:
+            frame_msg = await RAW_FRAME_QUEUE.get()
+            if not active_connections:
+                continue
+            payload = json.dumps(frame_msg)
+            dead = []
+            for ws in tuple(active_connections):
+                try:
+                    await asyncio.wait_for(ws.send_text(payload), timeout=WS_SEND_TIMEOUT_S)
+                except Exception:
+                    dead.append(ws)
+            for ws in dead:
+                if ws in active_connections:
+                    active_connections.remove(ws)
+        except Exception as exc:
+            print(f"[WS BROADCAST ERROR] {exc}", flush=True)
 
 
 # ---------------------------------------------------------------------------
