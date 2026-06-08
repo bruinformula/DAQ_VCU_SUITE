@@ -904,6 +904,19 @@ CAN_RAW_LIVE_QUEUE: deque[_CAN_RAW_TYPE] = deque()  # drained during active logg
 active_connections: list[WebSocket] = []
 RAW_FRAME_QUEUE: asyncio.Queue = asyncio.Queue(maxsize=100000)  # raw CAN frames for WS mirroring
 
+BACKGROUND_TASKS = set()
+
+def start_background_task(coro):
+    """
+    Start a background task and keep a strong reference to it.
+    This prevents Python's garbage collector from silently destroying the task
+    while it is suspended on an I/O operation like serial.read().
+    """
+    task = asyncio.create_task(coro)
+    BACKGROUND_TASKS.add(task)
+    task.add_done_callback(BACKGROUND_TASKS.discard)
+    return task
+
 # Use --mock flag or MOCK env var
 MOCK_MODE = os.environ.get('TELEMETRY_MOCK', '').lower() in ('1', 'true', 'yes')
 
@@ -991,7 +1004,7 @@ async def loop_mdu_serial_group() -> None:
     baud = int(os.environ.get('SERIAL_BAUD', '115200'))
     print(f"[SERIAL] Starting SLCAN readers for: {', '.join(ports)}")
     for port in ports:
-        asyncio.create_task(loop_mdu_serial_port(port, baud))
+        start_background_task(loop_mdu_serial_port(port, baud))
 
 
 def auto_detect_binary_serial_ports() -> list[str]:
@@ -1454,7 +1467,7 @@ async def loop_binary_serial_group() -> None:
     baudrate = int(os.environ.get('USB_BINARY_BAUD', os.environ.get('SERIAL_BAUD', '115200')))
     print(f"[BINARY SERIAL] Starting readers for: {', '.join(ports)}")
     for port in ports:
-        asyncio.create_task(loop_binary_serial_port(port, baudrate))
+        start_background_task(loop_binary_serial_port(port, baudrate))
 
 
 # ---------------------------------------------------------------------------
@@ -2156,15 +2169,15 @@ async def lifespan(app: FastAPI):
 
     if MOCK_MODE:
         print("[SYSTEM] === MOCK MODE ENABLED ===")
-        asyncio.create_task(loop_mock_generator())
+        start_background_task(loop_mock_generator())
     else:
-        asyncio.create_task(loop_mdu_serial_group())
-        asyncio.create_task(loop_binary_serial_group())
-        asyncio.create_task(loop_socketcan())
+        start_background_task(loop_mdu_serial_group())
+        start_background_task(loop_binary_serial_group())
+        start_background_task(loop_socketcan())
 
-    asyncio.create_task(loop_csv_logger())
-    asyncio.create_task(loop_ws_broadcaster())
-    asyncio.create_task(loop_serial_broadcaster())
+    start_background_task(loop_csv_logger())
+    start_background_task(loop_ws_broadcaster())
+    start_background_task(loop_serial_broadcaster())
 
     print(f"[SYSTEM] All loops started. Mock={MOCK_MODE}")
     yield
