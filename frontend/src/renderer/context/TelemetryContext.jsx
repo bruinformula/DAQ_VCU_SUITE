@@ -1,0 +1,852 @@
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import { parseRawCanFrame, hexToBytes } from '../utils/canDecoder';
+
+const TelemetryContext = createContext(null);
+
+const initialSignalState = {
+  // GPS
+  'gps.lat': 0.0, 'gps.lon': 0.0, 'gps.alt': 0.0, 'gps.vel': 0.0, 'gps.hdg': 0.0,
+  'gps.fix': 0, 'gps.fix_quality': 0, 'gps.rtk_state': 'no_fix', 'gps.sats': 0, 'gps.hdop': 99.99,
+  'gps.heading_valid': 0, 'gps.heading_quality': 0, 'gps.heading_source': 'course_over_ground',
+  'gps.heading_accuracy_deg': 0.0, 'gps.baseline_m': 0.0, 'gps.pitch_deg': 0.0, 'gps.error_flags': 0,
+
+  // IMU
+  'imu.ax': 0.0, 'imu.ay': 0.0, 'imu.az': 1.0,
+  'imu.pitch': 0.0, 'imu.roll': 0.0, 'imu.yaw': 0.0,
+  'imu[0].ax': 0.0, 'imu[0].ay': 0.0, 'imu[0].az': 1.0, 'imu[0].pitch': 0.0, 'imu[0].roll': 0.0, 'imu[0].yaw': 0.0,
+  'imu[1].ax': 0.0, 'imu[1].ay': 0.0, 'imu[1].az': 1.0, 'imu[1].pitch': 0.0, 'imu[1].roll': 0.0, 'imu[1].yaw': 0.0,
+  'imu[2].ax': 0.0, 'imu[2].ay': 0.0, 'imu[2].az': 1.0, 'imu[2].pitch': 0.0, 'imu[2].roll': 0.0, 'imu[2].yaw': 0.0,
+
+  // SDU 0..3
+  'sdu[0].shock': 0.0, 'sdu[0].brake': 0.0, 'sdu[0].wrpm': 0.0,
+  'sdu[0].tire[0]': 0.0, 'sdu[0].tire[1]': 0.0, 'sdu[0].tire[2]': 0.0, 'sdu[0].tire[3]': 0.0,
+  'sdu[1].shock': 0.0, 'sdu[1].brake': 0.0, 'sdu[1].wrpm': 0.0,
+  'sdu[1].tire[0]': 0.0, 'sdu[1].tire[1]': 0.0, 'sdu[1].tire[2]': 0.0, 'sdu[1].tire[3]': 0.0,
+  'sdu[2].shock': 0.0, 'sdu[2].brake': 0.0, 'sdu[2].wrpm': 0.0,
+  'sdu[2].tire[0]': 0.0, 'sdu[2].tire[1]': 0.0, 'sdu[2].tire[2]': 0.0, 'sdu[2].tire[3]': 0.0,
+  'sdu[3].shock': 0.0, 'sdu[3].brake': 0.0, 'sdu[3].wrpm': 0.0,
+  'sdu[3].tire[0]': 0.0, 'sdu[3].tire[1]': 0.0, 'sdu[3].tire[2]': 0.0, 'sdu[3].tire[3]': 0.0,
+
+  // TSPMU 0..1
+  'tspmu[0].p1': 0.0, 'tspmu[0].p2': 0.0,
+  'tspmu[0].temps[0]': 0.0, 'tspmu[0].temps[1]': 0.0, 'tspmu[0].temps[2]': 0.0, 'tspmu[0].temps[3]': 0.0,
+  'tspmu[1].p1': 0.0, 'tspmu[1].p2': 0.0,
+  'tspmu[1].temps[0]': 0.0, 'tspmu[1].temps[1]': 0.0, 'tspmu[1].temps[2]': 0.0, 'tspmu[1].temps[3]': 0.0,
+
+  // TSHMU
+  'tshmu.flow1': 0.0, 'tshmu.flow2': 0.0, 'tshmu.jitter_us': 0, 'tshmu.error_flags': 0,
+
+  // BMS & Inverter
+  'bms.v': 0.0, 'bms.i': 0.0, 'bms.soc': 0.0, 'bms.avg_t': 0.0, 'bms.hi_t': 0.0, 'bms.lo_t': 0.0,
+  'bms.avg_cv': 0.0, 'bms.hi_cv': 0.0, 'bms.lo_cv': 0.0,
+  'inv.mot_t': 0.0, 'inv.cool_t': 0.0, 'inv.tq_cmd': 0.0, 'inv.tq_fb': 0.0, 'inv.idc': 0.0, 'inv.rpm': 0.0,
+  'inv.vdc': 0.0,
+};
+
+function decodeStandardCan(id, dataBytes) {
+  if (!dataBytes || dataBytes.length < 8) return null;
+  
+  function toSigned16(value) {
+    return value > 32767 ? value - 65536 : value;
+  }
+  
+  if (id === 1712) { // BMS Voltages
+    return {
+      'bms.avg_cv': (dataBytes[0] | (dataBytes[1] << 8)) / 100,
+      'bms.lo_cv': (dataBytes[2] | (dataBytes[3] << 8)) / 100,
+      'bms.hi_cv': (dataBytes[4] | (dataBytes[5] << 8)) / 100,
+    };
+  }
+  if (id === 1713) { // BMS Temperatures
+    return {
+      'bms.avg_t': toSigned16(dataBytes[0] | (dataBytes[1] << 8)) / 100,
+      'bms.hi_t': toSigned16(dataBytes[2] | (dataBytes[3] << 8)) / 100,
+      'bms.lo_t': toSigned16(dataBytes[4] | (dataBytes[5] << 8)) / 100,
+    };
+  }
+  if (id === 1714) { // BMS SOC, Current, Voltage
+    return {
+      'bms.soc': (dataBytes[0] | (dataBytes[1] << 8)) / 100,
+      'bms.i': toSigned16(dataBytes[2] | (dataBytes[3] << 8)) / 100,
+      'bms.v': (dataBytes[4] | (dataBytes[5] << 8)) / 100,
+    };
+  }
+  if (id === 160) { // Inverter IGBT temps
+    return {
+      'inv.all.module_a_temp': toSigned16(dataBytes[0] | (dataBytes[1] << 8)) / 10,
+      'inv.all.module_b_temp': toSigned16(dataBytes[2] | (dataBytes[3] << 8)) / 10,
+      'inv.all.module_c_temp': toSigned16(dataBytes[4] | (dataBytes[5] << 8)) / 10,
+      'inv.all.gate_driver_board_temp': toSigned16(dataBytes[6] | (dataBytes[7] << 8)) / 10,
+    };
+  }
+  if (id === 162) { // Inverter coolant & motor temp
+    return {
+      'inv.cool_t': toSigned16(dataBytes[0] | (dataBytes[1] << 8)) / 10,
+      'inv.mot_t': toSigned16(dataBytes[4] | (dataBytes[5] << 8)) / 10,
+    };
+  }
+  if (id === 165) { // Inverter motor speed
+    return {
+      'inv.rpm': toSigned16(dataBytes[2] | (dataBytes[3] << 8)),
+    };
+  }
+  if (id === 166) { // Inverter phase currents
+    return {
+      'inv.all.phase_a_current': toSigned16(dataBytes[0] | (dataBytes[1] << 8)) / 10,
+      'inv.all.phase_b_current': toSigned16(dataBytes[2] | (dataBytes[3] << 8)) / 10,
+      'inv.all.phase_c_current': toSigned16(dataBytes[4] | (dataBytes[5] << 8)) / 10,
+      'inv.idc': toSigned16(dataBytes[6] | (dataBytes[7] << 8)) / 10,
+    };
+  }
+  if (id === 167) { // Inverter DC bus voltage
+    return {
+      'inv.vdc': toSigned16(dataBytes[0] | (dataBytes[1] << 8)) / 10,
+    };
+  }
+  if (id === 170) { // Inverter VSM state
+    return {
+      'inv.all.vsm_state': dataBytes[0] | (dataBytes[1] << 8),
+      'inv.all.inverter_state': dataBytes[2] | (dataBytes[3] << 8),
+    };
+  }
+  if (id === 172) { // Inverter torque CMD & feedback
+    return {
+      'inv.tq_cmd': toSigned16(dataBytes[0] | (dataBytes[1] << 8)) / 10,
+      'inv.tq_fb': toSigned16(dataBytes[2] | (dataBytes[3] << 8)) / 10,
+    };
+  }
+  if (id === 176) { // Inverter fast info
+    return {
+      'inv.rpm': toSigned16(dataBytes[0] | (dataBytes[1] << 8)),
+      'inv.vdc': toSigned16(dataBytes[2] | (dataBytes[3] << 8)) / 10,
+      'inv.tq_cmd': toSigned16(dataBytes[4] | (dataBytes[5] << 8)) / 10,
+      'inv.tq_fb': toSigned16(dataBytes[6] | (dataBytes[7] << 8)) / 10,
+    };
+  }
+  // IMU simple frames — accel (0x4F5, 0x4F7, 0x4F9) and attitude (0x4F6, 0x4F8, 0x4FA)
+  if (id >= 0x4F5 && id <= 0x4FA && dataBytes.length >= 6) {
+    const boardIdx = (id - 0x4F5) >> 1;
+    const isAccel  = ((id - 0x4F5) & 1) === 0;
+    const key = `imu[${boardIdx}]`;
+    if (isAccel) {
+      const ax = toSigned16(dataBytes[0] | (dataBytes[1] << 8)) / 1000.0;
+      const ay = toSigned16(dataBytes[2] | (dataBytes[3] << 8)) / 1000.0;
+      const az = toSigned16(dataBytes[4] | (dataBytes[5] << 8)) / 1000.0;
+      const out = { [`${key}.ax`]: ax, [`${key}.ay`]: ay, [`${key}.az`]: az };
+      if (boardIdx === 0) { out['imu.ax'] = ax; out['imu.ay'] = ay; out['imu.az'] = az; }
+      return out;
+    } else {
+      const pitch = toSigned16(dataBytes[0] | (dataBytes[1] << 8)) / 100.0;
+      const roll  = toSigned16(dataBytes[2] | (dataBytes[3] << 8)) / 100.0;
+      const yaw   = toSigned16(dataBytes[4] | (dataBytes[5] << 8)) / 100.0;
+      const out = { [`${key}.pitch`]: pitch, [`${key}.roll`]: roll, [`${key}.yaw`]: yaw };
+      if (boardIdx === 0) { out['imu.pitch'] = pitch; out['imu.roll'] = roll; out['imu.yaw'] = yaw; }
+      return out;
+    }
+  }
+  return null;
+}
+
+function updateStateFromBoard(state, board, id, dataBytes) {
+  if (board) {
+    if (board.signals) {
+      Object.assign(state, board.signals);
+      return;
+    }
+    const bt = board.boardType;
+    const bid = board.boardId;
+    
+    if (bt === 2) { // SDU
+      if (board.shockMm !== undefined) state[`sdu[${bid}].shock`] = board.shockMm;
+      if (board.brakeC !== undefined) state[`sdu[${bid}].brake`] = board.brakeC;
+      if (board.rpm !== undefined) state[`sdu[${bid}].wrpm`] = board.rpm;
+      if (board.tireC !== undefined) {
+        state[`sdu[${bid}].tire[0]`] = board.tireC.max;
+        state[`sdu[${bid}].tire[1]`] = board.tireC.min;
+        state[`sdu[${bid}].tire[2]`] = board.tireC.center;
+        state[`sdu[${bid}].tire[3]`] = board.tireC.ambient;
+      }
+    } else if (bt === 4) { // TSHMU
+      if (board.flow1 !== undefined) state['tshmu.flow1'] = board.flow1;
+      if (board.flow2 !== undefined) state['tshmu.flow2'] = board.flow2;
+      if (board.jitter !== undefined) state['tshmu.jitter_us'] = board.jitter;
+      if (board.errorFlags !== undefined) state['tshmu.error_flags'] = board.errorFlags;
+    } else if (bt === 6) { // TSPMU
+      if (board.pressure1 !== undefined) state[`tspmu[${bid}].p1`] = board.pressure1;
+      if (board.pressure2 !== undefined) state[`tspmu[${bid}].p2`] = board.pressure2;
+      if (board.tempBlocks && board.tempBlocks[0]) {
+        state[`tspmu[${bid}].temps[0]`] = board.tempBlocks[0].temp1;
+        state[`tspmu[${bid}].temps[1]`] = board.tempBlocks[0].temp2;
+        state[`tspmu[${bid}].temps[2]`] = board.tempBlocks[0].temp3;
+        state[`tspmu[${bid}].temps[3]`] = board.tempBlocks[0].temp4;
+      } else if (board.tspmuTemp1 !== undefined) {
+        state[`tspmu[${bid}].temps[0]`] = board.tspmuTemp1;
+        state[`tspmu[${bid}].temps[1]`] = board.tspmuTemp2;
+        state[`tspmu[${bid}].temps[2]`] = board.tspmuTemp3;
+        state[`tspmu[${bid}].temps[3]`] = board.tspmuTemp4;
+      }
+    } else if (bt === 7 || bt === 1) { // GPS / SMU
+      if (board.gpsPos) {
+        state['gps.lat'] = board.gpsPos.latDeg;
+        state['gps.lon'] = board.gpsPos.lonDeg;
+        state['gps.alt'] = board.gpsPos.altM;
+        state['gps.fix'] = board.gpsPos.fixValid;
+        state['gps.fix_quality'] = board.gpsPos.fixQuality;
+        state['gps.sats'] = board.gpsPos.satellites;
+        state['gps.hdop'] = board.gpsPos.hdop;
+        state['gps.error_flags'] = board.gpsPos.errorFlags;
+      } else if (board.gpsNav) {
+        state['gps.vel'] = board.gpsNav.velMps;
+        state['gps.hdg'] = board.gpsNav.headingDeg;
+        state['gps.heading_valid'] = board.gpsNav.headingValid;
+        state['gps.heading_quality'] = board.gpsNav.headingQuality;
+        state['gps.baseline_m'] = board.gpsNav.baselineM;
+        state['gps.pitch_deg'] = board.gpsNav.pitchDeg;
+        state['gps.error_flags'] = board.gpsNav.errorFlags;
+      } else if (board.latitude_deg !== undefined) {
+        state['gps.lat'] = board.latitude_deg;
+        state['gps.lon'] = board.longitude_deg;
+        state['gps.alt'] = board.altitude_m;
+        state['gps.fix'] = board.fix_valid;
+        state['gps.fix_quality'] = board.fix_quality;
+        state['gps.sats'] = board.satellites;
+        state['gps.hdop'] = board.hdop;
+      } else if (board.velocity_mps !== undefined) {
+        state['gps.vel'] = board.velocity_mps;
+        state['gps.hdg'] = board.course_deg;
+        state['gps.heading_valid'] = board.heading_valid;
+        state['gps.heading_quality'] = board.heading_quality;
+      }
+      
+      if (board.accelX !== undefined) {
+        state['imu.ax'] = board.accelX / 1000.0;
+        state['imu.ay'] = board.accelY / 1000.0;
+        state['imu.az'] = board.accelZ / 1000.0;
+        
+        const stateIdx = `imu[${bid}]`;
+        state[`${stateIdx}.ax`] = board.accelX / 1000.0;
+        state[`${stateIdx}.ay`] = board.accelY / 1000.0;
+        state[`${stateIdx}.az`] = board.accelZ / 1000.0;
+        state[`${stateIdx}.pitch`] = board.veloX / 100.0;
+        state[`${stateIdx}.roll`] = board.veloY / 100.0;
+        state[`${stateIdx}.yaw`] = board.veloZ / 100.0;
+      }
+    }
+  } else if (id !== undefined && dataBytes) {
+    const dec = decodeStandardCan(id, dataBytes);
+    if (dec) {
+      for (const [k, v] of Object.entries(dec)) {
+        state[k] = v;
+      }
+    }
+  }
+}
+
+export function TelemetryProvider({ children }) {
+  const [isLiveMode, setIsLiveMode] = useState(true);
+  const [latestValues, setLatestValues] = useState({ ...initialSignalState });
+  const [activeDataset, setActiveDataset] = useState([]);
+  const [currentFilePath, setCurrentFilePath] = useState('');
+  
+  // Folder loading state
+  const [folderPath, setFolderPath] = useState('');
+  const [folderFiles, setFolderFiles] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  // Live monitor statistics
+  const [availablePorts, setAvailablePorts] = useState([]);
+  const [connectionState, setConnectionState] = useState({ connected: false, port: null, baudRate: 115200 });
+  const [diagnostics, setDiagnostics] = useState({});
+  const [logStatus, setLogStatus] = useState({ active: false, filePath: null, linesWritten: 0, bytesWritten: 0 });
+  
+  const logStatusRef = useRef(logStatus);
+  useEffect(() => {
+    logStatusRef.current = logStatus;
+  }, [logStatus]);
+
+  // WiFi Telemetry State
+  const [activeTransport, setActiveTransport] = useState('serial'); // 'serial' or 'wifi'
+  const [targetIp, setTargetIp] = useState('');
+  const [wifiState, setWifiState] = useState('disconnected'); // 'disconnected', 'connecting', 'connected', 'reconnecting', 'degraded'
+  const [wifiMessage, setWifiMessage] = useState('Waiting for telemetry link.');
+  const [isWifiLogging, setIsWifiLogging] = useState(false);
+  const [wifiLogs, setWifiLogs] = useState([]);
+  const [isScanningNetwork, setIsScanningNetwork] = useState(false);
+
+  // Refs for tracking live state
+  const latestStateRef = useRef({ ...initialSignalState });
+  const liveBufferRef = useRef([]);
+  const liveStartMsRef = useRef(0);
+  const liveIntervalRef = useRef(null);
+
+  // WiFi Telemetry Refs
+  const wsRef = useRef(null);
+  const reconnectTimerRef = useRef(null);
+  const healthTimerRef = useRef(null);
+  const connectGenerationRef = useRef(0);
+  const reconnectAttemptRef = useRef(0);
+  const manualDisconnectRef = useRef(false);
+  const lastMessageAtRef = useRef(0);
+  const targetIpRef = useRef('');
+
+  // Load a file for playback
+  const loadRunFile = async (filePath) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await window.mduDebug.parseTelemetryFile(filePath);
+      if (data && data.length > 0) {
+        // Filter out dummy/initialization rows with zero or very low timestamps
+        const cleanedData = data.filter(row => {
+          const ts = parseFloat(row.ts);
+          return !isNaN(ts) && ts > 1000000.0;
+        });
+        setActiveDataset(cleanedData.length > 0 ? cleanedData : data);
+        setCurrentFilePath(filePath);
+        setIsLiveMode(false);
+      } else {
+        setError('Parsed file was empty.');
+      }
+    } catch (e) {
+      setError(`Failed to parse telemetry file: ${e.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Select a local folder to scan
+  const selectDataFolder = async () => {
+    try {
+      const selected = await window.mduDebug.selectDataFolder();
+      if (selected) {
+        setFolderPath(selected);
+        localStorage.setItem('mdu_data_folder', selected);
+        await scanFolder(selected);
+      }
+    } catch (e) {
+      setError(`Error selecting folder: ${e.message}`);
+    }
+  };
+
+  const scanFolder = async (path) => {
+    setLoading(true);
+    try {
+      const files = await window.mduDebug.scanFolder(path);
+      setFolderFiles(files || []);
+    } catch (e) {
+      setError(`Error scanning folder: ${e.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Auto load folder on mount
+  useEffect(() => {
+    const savedFolder = localStorage.getItem('mdu_data_folder') || '/Users/larry/mk11-data-visualization/data';
+    setFolderPath(savedFolder);
+    scanFolder(savedFolder);
+  }, []);
+
+  const clearReconnectTimer = () => {
+    if (reconnectTimerRef.current) {
+      clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
+  };
+
+  const stopHealthMonitor = () => {
+    if (healthTimerRef.current) {
+      clearInterval(healthTimerRef.current);
+      healthTimerRef.current = null;
+    }
+  };
+
+  const closeSocket = () => {
+    if (wsRef.current) {
+      wsRef.current.onopen = null;
+      wsRef.current.onmessage = null;
+      wsRef.current.onclose = null;
+      wsRef.current.onerror = null;
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+  };
+
+  const requestJson = async (path, options = {}, overrideIp) => {
+    const ip = overrideIp || targetIpRef.current;
+    if (!ip) {
+      throw new Error('No Raspberry Pi IP is selected.');
+    }
+
+    const response = await fetch(`http://${ip}:8000${path}`, {
+      headers: {
+        'Content-Type': 'application/json',
+        ...(options.headers || {}),
+      },
+      ...options,
+    });
+
+    if (!response.ok) {
+      throw new Error(`Request failed: ${response.status}`);
+    }
+
+    return response.json();
+  };
+
+  const refreshStatus = async (overrideIp) => {
+    const status = await requestJson('/api/status', {}, overrideIp);
+    setIsWifiLogging(Boolean(status.is_logging));
+    return status;
+  };
+
+  const fetchWifiLogs = async () => {
+    try {
+      const logs = await requestJson('/api/logs');
+      setWifiLogs(logs || []);
+      return logs;
+    } catch (err) {
+      console.error('Error fetching wifi logs:', err);
+      return [];
+    }
+  };
+
+  const fetchWifiLogFile = async (token, filename) => {
+    try {
+      const response = await fetch(`http://${targetIpRef.current}:8000/api/logs/${token}`);
+      if (!response.ok) {
+        throw new Error(`Failed to download log: ${response.status}`);
+      }
+      const csvContent = await response.text();
+      
+      // Automatically save to the active local folder
+      if (folderPath && filename) {
+        const localPath = `${folderPath}/${filename}`;
+        const writeResult = await window.mduDebug.writeFile(localPath, csvContent);
+        if (writeResult.success) {
+          await scanFolder(folderPath);
+        } else {
+          console.error('Failed to write downloaded CSV locally:', writeResult.error);
+        }
+      }
+      return csvContent;
+    } catch (err) {
+      console.error('Error fetching log file:', err);
+      throw err;
+    }
+  };
+
+  const toggleWifiLogging = async (selectedSignalIds = [], filename = '') => {
+    const shouldStart = !isWifiLogging;
+    if (!targetIpRef.current) {
+      throw new Error('Connect to the Pi before changing logging state.');
+    }
+
+    if (shouldStart) {
+      await requestJson('/api/logging/start', {
+        method: 'POST',
+        body: JSON.stringify({ signals: selectedSignalIds, filename }),
+      });
+    } else {
+      await requestJson('/api/logging/stop', { method: 'POST' });
+    }
+
+    await refreshStatus();
+    await fetchWifiLogs();
+  };
+
+  const scheduleReconnect = () => {
+    clearReconnectTimer();
+    if (manualDisconnectRef.current || !targetIpRef.current) {
+      setWifiState('disconnected');
+      setWifiMessage('Telemetry link idle.');
+      return;
+    }
+
+    reconnectAttemptRef.current += 1;
+    const attempt = reconnectAttemptRef.current;
+    const delayMs = Math.min(1500 * attempt, 5000);
+
+    setWifiState('reconnecting');
+    setWifiMessage(`Link dropped. Reconnecting in ${(delayMs / 1000).toFixed(1)}s...`);
+
+    reconnectTimerRef.current = setTimeout(async () => {
+      let nextIp = targetIpRef.current;
+      if (window.mduDebug && attempt % 3 === 0) {
+        try {
+          const scannedIp = await window.mduDebug.scanNetwork();
+          if (scannedIp) {
+            nextIp = scannedIp;
+            targetIpRef.current = scannedIp;
+            setTargetIp(scannedIp);
+          }
+        } catch (err) {
+          console.error('Autoscan during reconnect failed', err);
+        }
+      }
+
+      if (nextIp) {
+        connectWifi(nextIp);
+      }
+    }, delayMs);
+  };
+
+  const startHealthMonitor = () => {
+    stopHealthMonitor();
+    healthTimerRef.current = setInterval(() => {
+      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+        return;
+      }
+      if (Date.now() - lastMessageAtRef.current > 15000) {
+        setWifiState('degraded');
+        setWifiMessage(`Streaming from ${targetIpRef.current} • waiting for fresh frames`);
+      }
+    }, 1000);
+  };
+
+  const connectWifi = (ip) => {
+    const nextIp = (ip || '').trim();
+    if (!nextIp) return;
+
+    manualDisconnectRef.current = false;
+    setActiveTransport('wifi');
+    clearReconnectTimer();
+    stopHealthMonitor();
+    closeSocket();
+
+    // Disconnect serial if it is active
+    window.mduDebug.disconnect();
+
+    targetIpRef.current = nextIp;
+    setTargetIp(nextIp);
+    localStorage.setItem('telemetry:lastIp', nextIp);
+
+    const generation = connectGenerationRef.current + 1;
+    connectGenerationRef.current = generation;
+    setWifiState('connecting');
+    setWifiMessage(`Connecting to ${nextIp}...`);
+
+    const socket = new WebSocket(`ws://${nextIp}:8000/ws`);
+    wsRef.current = socket;
+
+    socket.onopen = async () => {
+      if (generation !== connectGenerationRef.current) {
+        socket.close();
+        return;
+      }
+      reconnectAttemptRef.current = 0;
+      setWifiState('connected');
+      setWifiMessage(`Streaming from ${nextIp}.`);
+      lastMessageAtRef.current = Date.now();
+      startHealthMonitor();
+      try {
+        await refreshStatus(nextIp);
+        await fetchWifiLogs();
+      } catch (err) {
+        console.error('Status refresh failed', err);
+      }
+    };
+
+    socket.onmessage = (event) => {
+      if (generation !== connectGenerationRef.current) return;
+      try {
+        const json = JSON.parse(event.data);
+        // Expected format: { ts, id, dlc, d } where d is a hex-encoded payload
+        const canId    = json.id;
+        const dataBytes = hexToBytes(json.d);
+        const { board } = parseRawCanFrame(canId, dataBytes);
+        updateStateFromBoard(latestStateRef.current, board, canId, dataBytes);
+        lastMessageAtRef.current = Date.now();
+        setWifiState('connected');
+        setWifiMessage(`Streaming from ${nextIp}.`);
+        if (logStatusRef.current.active) {
+          window.mduDebug.logWiFiFrame({
+            type: 'wifi_raw_frame',
+            timestamp: new Date().toISOString(),
+            frame: json,
+          });
+        }
+      } catch (err) {
+        console.error('Telemetry parsing error', err);
+      }
+    };
+
+    socket.onclose = () => {
+      if (generation !== connectGenerationRef.current) return;
+      stopHealthMonitor();
+      if (manualDisconnectRef.current) {
+        setWifiState('disconnected');
+        setWifiMessage('Telemetry link disconnected.');
+        return;
+      }
+      scheduleReconnect();
+    };
+
+    socket.onerror = () => socket.close();
+  };
+
+  const disconnectWifi = () => {
+    manualDisconnectRef.current = true;
+    clearReconnectTimer();
+    stopHealthMonitor();
+    closeSocket();
+    setWifiState('disconnected');
+    setWifiMessage('Telemetry link disconnected.');
+  };
+
+  const scanNetwork = async () => {
+    setIsScanningNetwork(true);
+    try {
+      const foundIp = await window.mduDebug.scanNetwork();
+      if (foundIp) {
+        connectWifi(foundIp);
+      } else {
+        alert('No Telemetry Hub found on local network.');
+      }
+    } catch (err) {
+      console.error('Network scan failed', err);
+    } finally {
+      setIsScanningNetwork(false);
+    }
+  };
+
+  // Set up live listeners
+  useEffect(() => {
+    // Initial states
+    window.mduDebug.getInitialState().then(state => {
+      setConnectionState(state.connection || { connected: false, port: null, baudRate: 115200 });
+      setDiagnostics(state.diagnostics || {});
+      setLogStatus(state.logStatus || { active: false, filePath: null, linesWritten: 0, bytesWritten: 0 });
+    });
+
+    const unsubPorts = window.mduDebug.onPorts((ports) => {
+      setAvailablePorts(ports || []);
+    });
+
+    const unsubConnection = window.mduDebug.onConnection((conn) => {
+      setConnectionState(conn || { connected: false, port: null, baudRate: 115200 });
+      
+      // If connected, start the live binning loop
+      if (conn.connected) {
+        setActiveTransport('serial');
+        disconnectWifi(); // Disconnect wifi if serial connects
+        
+        setIsLiveMode(true);
+        liveStartMsRef.current = Date.now();
+        liveBufferRef.current = [];
+        latestStateRef.current = { ...initialSignalState };
+        
+        if (liveIntervalRef.current) clearInterval(liveIntervalRef.current);
+        liveIntervalRef.current = setInterval(() => {
+          const nowMs = Date.now();
+          const tsSeconds = (nowMs - liveStartMsRef.current) / 1000;
+          
+          const row = {
+            ts: tsSeconds.toFixed(3),
+            ...latestStateRef.current
+          };
+          
+          liveBufferRef.current.push(row);
+          if (liveBufferRef.current.length > 2000) {
+            liveBufferRef.current.shift();
+          }
+          
+          setLatestValues({ ...latestStateRef.current });
+          setActiveDataset([...liveBufferRef.current]);
+        }, 100);
+      } else {
+        if (liveIntervalRef.current && activeTransport === 'serial') {
+          clearInterval(liveIntervalRef.current);
+          liveIntervalRef.current = null;
+        }
+      }
+    });
+
+    const unsubDiagnostics = window.mduDebug.onDiagnostics((diag) => {
+      setDiagnostics(diag || {});
+    });
+
+    const unsubLogStatus = window.mduDebug.onLogStatus((status) => {
+      setLogStatus(status || { active: false, filePath: null, linesWritten: 0, bytesWritten: 0 });
+    });
+
+    const unsubFrames = window.mduDebug.onFrames((frames) => {
+      if (Array.isArray(frames) && activeTransport === 'serial') {
+        for (const frame of frames) {
+          if (frame && frame.ok) {
+            updateStateFromBoard(
+              latestStateRef.current,
+              frame.board,
+              frame.identifier || frame.board?.identifier,
+              frame.dataBytes || frame.board?.dataBytes
+            );
+          }
+        }
+      }
+    });
+
+    const unsubWifiSnapshot = window.mduDebug.onWifiSnapshot((snapshot) => {
+      if (snapshot && snapshot.flat && activeTransport === 'serial') {
+        Object.assign(latestStateRef.current, snapshot.flat);
+      }
+    });
+
+    // Check for standard listing refresh
+    window.mduDebug.listPorts();
+
+    return () => {
+      unsubPorts();
+      unsubConnection();
+      unsubDiagnostics();
+      unsubLogStatus();
+      unsubFrames();
+      unsubWifiSnapshot();
+      if (liveIntervalRef.current) clearInterval(liveIntervalRef.current);
+    };
+  }, [activeTransport]);
+
+  // WiFi binning setup effect: when WiFi gets connected, we start a similar 10Hz binning loop!
+  useEffect(() => {
+    if (wifiState === 'connected') {
+      setIsLiveMode(true);
+      liveStartMsRef.current = Date.now();
+      liveBufferRef.current = [];
+      latestStateRef.current = { ...initialSignalState };
+
+      if (liveIntervalRef.current) clearInterval(liveIntervalRef.current);
+      liveIntervalRef.current = setInterval(() => {
+        const nowMs = Date.now();
+        const tsSeconds = (nowMs - liveStartMsRef.current) / 1000;
+        
+        const row = {
+          ts: tsSeconds.toFixed(3),
+          ...latestStateRef.current
+        };
+        
+        liveBufferRef.current.push(row);
+        if (liveBufferRef.current.length > 2000) {
+          liveBufferRef.current.shift();
+        }
+        
+        setLatestValues({ ...latestStateRef.current });
+        setActiveDataset([...liveBufferRef.current]);
+      }, 100);
+    } else {
+      if (liveIntervalRef.current && activeTransport === 'wifi') {
+        clearInterval(liveIntervalRef.current);
+        liveIntervalRef.current = null;
+      }
+    }
+  }, [wifiState, activeTransport]);
+
+  // Try auto-connecting WiFi on mount
+  useEffect(() => {
+    const savedIp = localStorage.getItem('telemetry:lastIp');
+    if (savedIp) {
+      targetIpRef.current = savedIp;
+      setTargetIp(savedIp);
+      setTimeout(() => {
+        if (!manualDisconnectRef.current && !wsRef.current) {
+          connectWifi(savedIp);
+        }
+      }, 0);
+    } else if (window.mduDebug) {
+      window.mduDebug.scanNetwork().then((foundIp) => {
+        if (foundIp && !manualDisconnectRef.current && !wsRef.current) {
+          connectWifi(foundIp);
+        }
+      }).catch((err) => {
+        console.error('Initial auto-scan failed', err);
+      });
+    }
+
+    return () => {
+      clearReconnectTimer();
+      stopHealthMonitor();
+      closeSocket();
+    };
+  }, []);
+
+  const connectSerial = async (portPath, baudRate) => {
+    disconnectWifi(); // Disconnect wifi if connecting to serial
+    return await window.mduDebug.connect({ path: portPath, baudRate: parseInt(baudRate, 10) });
+  };
+
+  const disconnectSerial = async () => {
+    return await window.mduDebug.disconnect();
+  };
+
+  const startLogging = async (filePath) => {
+    return await window.mduDebug.startLogging(filePath);
+  };
+
+  const stopLogging = async () => {
+    return await window.mduDebug.stopLogging();
+  };
+
+  const clearLiveSession = () => {
+    window.mduDebug.clearSession();
+    liveBufferRef.current = [];
+    setActiveDataset([]);
+    liveStartMsRef.current = Date.now();
+  };
+
+  const toggleLiveMode = () => {
+    setIsLiveMode(true);
+    setActiveDataset([...liveBufferRef.current]);
+    setCurrentFilePath('');
+  };
+
+  return (
+    <TelemetryContext.Provider
+      value={{
+        isLiveMode,
+        latestValues,
+        activeDataset,
+        currentFilePath,
+        folderPath,
+        folderFiles,
+        loading,
+        error,
+        availablePorts,
+        connectionState,
+        diagnostics,
+        logStatus,
+        loadRunFile,
+        selectDataFolder,
+        scanFolder: () => scanFolder(folderPath),
+        connectSerial,
+        disconnectSerial,
+        startLogging,
+        stopLogging,
+        clearLiveSession,
+        toggleLiveMode,
+
+        // WiFi/Pi Integrations
+        activeTransport,
+        targetIp,
+        wifiState,
+        wifiMessage,
+        isWifiLogging,
+        wifiLogs,
+        isScanningNetwork,
+        connectWifi,
+        disconnectWifi,
+        toggleWifiLogging,
+        fetchWifiLogs,
+        fetchWifiLogFile,
+        scanNetwork,
+      }}
+    >
+      {children}
+    </TelemetryContext.Provider>
+  );
+}
+
+export function useTelemetry() {
+  const context = useContext(TelemetryContext);
+  if (!context) {
+    throw new Error('useTelemetry must be used within a TelemetryProvider');
+  }
+  return context;
+}

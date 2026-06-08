@@ -1465,6 +1465,149 @@ def _process_frame(frame: SlcanFrame) -> None:
     _enqueue_raw_frame(frame.identifier, frame.data_length, frame.data_hex)
 
 
+def _u16b(v: int) -> list[int]:
+    """Pack unsigned int as 2 little-endian bytes (clamped to 0-65535)."""
+    v = max(0, min(65535, int(v)))
+    return [v & 0xFF, (v >> 8) & 0xFF]
+
+def _s16b(v: int) -> list[int]:
+    """Pack signed int as 2 little-endian bytes (wraps via twos-complement)."""
+    v = int(v) & 0xFFFF
+    return [v & 0xFF, (v >> 8) & 0xFF]
+
+def _u32b(v: int) -> list[int]:
+    """Pack unsigned int as 4 little-endian bytes."""
+    v = max(0, min(0xFFFFFFFF, int(v)))
+    return [v & 0xFF, (v >> 8) & 0xFF, (v >> 16) & 0xFF, (v >> 24) & 0xFF]
+
+def _s32b(v: int) -> list[int]:
+    """Pack signed int as 4 little-endian bytes (wraps via twos-complement)."""
+    v = int(v) & 0xFFFFFFFF
+    return [v & 0xFF, (v >> 8) & 0xFF, (v >> 16) & 0xFF, (v >> 24) & 0xFF]
+
+def _enqueue_mock_frames(state) -> None:
+    """Encode the current mock TelemetryState into raw CAN frames and push them
+    into the WebSocket broadcast queue so that WiFi clients receive data even in
+    mock mode.  The CSV logger still reads from STATE directly."""
+
+    # --- GPS Position (CAN ID 0x041 = 65, boardType=1 bit-packed) ---
+    gps_pos = bytearray(64)
+    gps_pos[4:8]   = _s32b(round(state.gps_lat * 1e7))
+    gps_pos[8:12]  = _s32b(round(state.gps_lon * 1e7))
+    gps_pos[12:16] = _s32b(round(state.gps_alt * 1000))
+    gps_pos[16:18] = _u16b(round(state.gps_hdop * 100))
+    gps_pos[18] = int(state.gps_fix)
+    gps_pos[19] = int(state.gps_fix_quality)
+    gps_pos[20] = int(state.gps_sats)
+    _enqueue_raw_frame(0x041, 64, bytes(gps_pos).hex().upper())
+
+    # --- GPS Nav (CAN ID 0x042 = 66) ---
+    gps_nav = bytearray(64)
+    gps_nav[4:8]   = _u32b(round(state.gps_vel * 100))
+    gps_nav[8:12]  = _s32b(round(state.gps_heading * 100))  # course
+    gps_nav[12:16] = _s32b(round(state.gps_heading * 100))  # heading
+    gps_nav[16:18] = _u16b(round(state.gps_heading_accuracy_deg * 100))
+    gps_nav[18] = int(state.gps_heading_valid)
+    gps_nav[19] = int(state.gps_heading_quality)
+    gps_nav[20:24] = _u32b(round(state.gps_baseline_m * 1000))
+    gps_nav[24:28] = _s32b(round(state.gps_pitch_deg * 100))
+    _enqueue_raw_frame(0x042, 64, bytes(gps_nav).hex().upper())
+
+    # --- IMU simple frames — 6-byte accel (0x4F5,0x4F7,0x4F9) and attitude (0x4F6,0x4F8,0x4FA) ---
+    for idx, imu in enumerate(state.imus):
+        ax_mg = _s16b(round(imu['ax'] * 1000))
+        ay_mg = _s16b(round(imu['ay'] * 1000))
+        az_mg = _s16b(round(imu['az'] * 1000))
+        _enqueue_raw_frame(0x4F5 + idx * 2, 6,
+                           bytes(ax_mg + ay_mg + az_mg).hex().upper())
+        pitch_cd = _s16b(round(imu['pitch'] * 100))
+        roll_cd  = _s16b(round(imu['roll']  * 100))
+        yaw_cd   = _s16b(round(imu['yaw']   * 100))
+        _enqueue_raw_frame(0x4F6 + idx * 2, 6,
+                           bytes(pitch_cd + roll_cd + yaw_cd).hex().upper())
+
+    # --- Inverter ---
+    inv_a2 = bytearray(8)
+    inv_a2[0:2] = _s16b(round(state.inv_coolant_temp * 10))
+    inv_a2[4:6] = _s16b(round(state.inv_motor_temp   * 10))
+    _enqueue_raw_frame(162, 8, bytes(inv_a2).hex().upper())
+
+    inv_a5 = bytearray(8)
+    inv_a5[2:4] = _s16b(round(state.inv_motor_speed))
+    _enqueue_raw_frame(165, 8, bytes(inv_a5).hex().upper())
+
+    inv_a7 = bytearray(8)
+    inv_a7[0:2] = _s16b(round(state.inv_dc_bus_voltage * 10))
+    _enqueue_raw_frame(167, 8, bytes(inv_a7).hex().upper())
+
+    inv_ac = bytearray(8)
+    inv_ac[0:2] = _s16b(round(state.inv_torque_cmd * 10))
+    inv_ac[2:4] = _s16b(round(state.inv_torque_fb  * 10))
+    _enqueue_raw_frame(172, 8, bytes(inv_ac).hex().upper())
+
+    # --- BMS ---
+    bms_6b0 = bytearray(8)
+    bms_6b0[0:2] = _u16b(round(state.bms_avg_cell_v  * 100))
+    bms_6b0[2:4] = _u16b(round(state.bms_low_cell_v  * 100))
+    bms_6b0[4:6] = _u16b(round(state.bms_high_cell_v * 100))
+    _enqueue_raw_frame(1712, 8, bytes(bms_6b0).hex().upper())
+
+    bms_6b1 = bytearray(8)
+    bms_6b1[0:2] = _s16b(round(state.bms_avg_temp  * 100))
+    bms_6b1[2:4] = _s16b(round(state.bms_high_temp * 100))
+    bms_6b1[4:6] = _s16b(round(state.bms_low_temp  * 100))
+    _enqueue_raw_frame(1713, 8, bytes(bms_6b1).hex().upper())
+
+    bms_6b2 = bytearray(8)
+    bms_6b2[0:2] = _u16b(round(state.bms_soc          * 100))
+    bms_6b2[2:4] = _s16b(round(state.bms_pack_current  * 100))
+    bms_6b2[4:6] = _u16b(round(state.bms_pack_voltage  * 100))
+    _enqueue_raw_frame(1714, 8, bytes(bms_6b2).hex().upper())
+
+    # --- SDU boards (shock=sensor1, brake=sensor2, tire=sensor3, wheel=sensor4) ---
+    for board_idx in range(4):
+        sdu = state.sdu[board_idx]
+        board_id_bits = board_idx << 3
+
+        # Shock — 19 samples, scale = *100 (uint16 LE), in decodeSensorSamples format
+        shock_id = (2 << 6) | board_id_bits | 1
+        shock_raw = max(0, min(65535, round(sdu['shock_mm'] * 100)))
+        sf = bytearray(64)
+        for s in range(19):
+            o = 6 + s * 3
+            sf[o] = shock_raw & 0xFF; sf[o + 1] = (shock_raw >> 8) & 0xFF
+        _enqueue_raw_frame(shock_id, 64, bytes(sf).hex().upper())
+
+        # Brake temp — 19 samples, scale = *10
+        brake_id = (2 << 6) | board_id_bits | 2
+        brake_raw = max(0, min(65535, round(sdu['brake_c'] * 10)))
+        bf = bytearray(64)
+        for s in range(19):
+            o = 6 + s * 3
+            bf[o] = brake_raw & 0xFF; bf[o + 1] = (brake_raw >> 8) & 0xFF
+        _enqueue_raw_frame(brake_id, 64, bytes(bf).hex().upper())
+
+        # Tire temp — 11 blocks of [max, min, center, ambient, jitter]
+        tire_id = (2 << 6) | board_id_bits | 3
+        tf = bytearray(64)
+        for blk in range(11):
+            o = 6 + blk * 5
+            tf[o]     = max(0, min(255, int(sdu['tire_max_c'])))
+            tf[o + 1] = max(0, min(255, int(sdu['tire_min_c'])))
+            tf[o + 2] = max(0, min(255, int(sdu['tire_ctr_c'])))
+            tf[o + 3] = max(0, min(255, int(sdu['tire_amb_c'])))
+        _enqueue_raw_frame(tire_id, 64, bytes(tf).hex().upper())
+
+        # Wheel speed — 19 samples, scale = *10
+        wheel_id = (2 << 6) | board_id_bits | 4
+        wheel_raw = max(0, min(65535, round(sdu['wheel_rpm'] * 10)))
+        wf = bytearray(64)
+        for s in range(19):
+            o = 6 + s * 3
+            wf[o] = wheel_raw & 0xFF; wf[o + 1] = (wheel_raw >> 8) & 0xFF
+        _enqueue_raw_frame(wheel_id, 64, bytes(wf).hex().upper())
+
+
 # ---------------------------------------------------------------------------
 # LOOP B: Mock Data Generator
 # ---------------------------------------------------------------------------
@@ -1561,8 +1704,10 @@ async def loop_mock_generator():
         STATE.bms_soc = max(10, 85.0 - (t % 3600) / 3600.0 * 20)
         STATE.bms_high_temp = 38.0 + 2.0 * math.sin(t * 0.02)
         STATE.bms_low_temp = 32.0 + 1.0 * math.sin(t * 0.02)
+        STATE.bms_avg_temp = (STATE.bms_high_temp + STATE.bms_low_temp) / 2.0
         STATE.bms_high_cell_v = 4.15 - 0.01 * math.sin(t * 0.01)
         STATE.bms_low_cell_v = 4.10 - 0.02 * math.sin(t * 0.01)
+        STATE.bms_avg_cell_v = (STATE.bms_high_cell_v + STATE.bms_low_cell_v) / 2.0
         STATE.bms_dcl = 300.0
 
         # VCU
@@ -1581,6 +1726,9 @@ async def loop_mock_generator():
             STATE.sdu[i]['tire_min_c'] = 45 + int(3 * math.sin(t * 0.05 + i))
             STATE.sdu[i]['tire_ctr_c'] = 55 + int(4 * math.sin(t * 0.05 + i))
             STATE.sdu[i]['tire_amb_c'] = 28
+
+        # Push all mock signals as raw CAN frames so WiFi clients receive data
+        _enqueue_mock_frames(STATE)
 
         STATE.frames_parsed += 1
         await asyncio.sleep(0.02)  # 50Hz
