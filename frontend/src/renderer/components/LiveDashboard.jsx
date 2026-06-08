@@ -792,6 +792,29 @@ export default function LiveDashboard() {
                         <strong>{status.drops}</strong>
                       </div>
                     )}
+
+                    {(() => {
+                      if (status.state === 'offline' || status.rate <= 0) return null;
+                      let rates = [];
+                      if (eb.type === 2) { // SDU
+                        const baseFast = status.rate / 2;
+                        rates.push(`Shock: ~${Math.round(baseFast * 19)}Hz`);
+                        rates.push(`Strain: ~${Math.round(baseFast * 5)}Hz`);
+                        rates.push(`Brake: ~${Math.round((baseFast/10) * 19)}Hz`);
+                      } else if (eb.type === 4) { // TSHMU
+                        rates.push(`Flow: ~${Math.round(status.rate * 19)}Hz`);
+                      } else if (eb.type === 6) { // TSPMU
+                        // If TSPMU only has slow frames, rate might be 0, but if we track it:
+                        rates.push(`Tire: ~${Math.round(status.rate * 5)}Hz`);
+                      }
+                      
+                      if (rates.length === 0) return null;
+                      return (
+                        <div style={{ fontSize: '0.5rem', color: '#94a3b8', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '0.2rem', marginTop: '0.2rem', display: 'flex', flexWrap: 'wrap', gap: '0.25rem' }}>
+                          {rates.map(r => <span key={r} style={{background: 'rgba(0,0,0,0.2)', padding: '0.1rem 0.25rem', borderRadius: '3px', border: '1px solid rgba(255,255,255,0.05)'}}>{r}</span>)}
+                        </div>
+                      );
+                    })()}
                   </div>
                 );
               })}

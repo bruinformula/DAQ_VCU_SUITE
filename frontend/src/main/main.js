@@ -883,6 +883,10 @@ function registerIpcHandlers() {
       
       const parsed = parseSlcanToBoard(slcan, slcan.raw);
       if (parsed && parsed.ok) {
+        if (monitor) {
+          monitor.stats.recordLine(parsed);
+          monitor.boardStates.record(parsed.board);
+        }
         results.push({
           ok: true,
           board: parsed.board,
