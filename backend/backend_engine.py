@@ -960,16 +960,19 @@ async def loop_mdu_serial_port(port: str, baud: int) -> None:
 
 def auto_detect_mdu_serial_ports() -> list[str]:
     """
-    Find all USB serial ports that could be MDU CDC interfaces.
-    The MDU exposes 4 USB CDC interfaces — each SDU board outputs SLCAN text
-    on its own port. On Linux/Pi these enumerate as /dev/ttyACM* or /dev/ttyUSB*.
-    The USB_MDU_PORTS env var can override with a comma-separated list.
+    Find all USB serial ports for MDU SLCAN text interfaces.
+    On Linux/Pi, FTDI-based MDU boards enumerate as /dev/ttyUSB*.
+    On macOS they enumerate as /dev/tty.usbserial* or /dev/cu.usbserial*.
     """
+    import platform
     override = os.environ.get('USB_MDU_PORTS', '').strip()
     if override:
         return [p.strip() for p in override.split(',') if p.strip()]
-    candidates = sorted(glob.glob('/dev/ttyACM*')) + sorted(glob.glob('/dev/ttyUSB*'))
-    return candidates
+    
+    if platform.system() == 'Darwin':
+        return sorted(glob.glob('/dev/tty.usbserial*')) + sorted(glob.glob('/dev/cu.usbserial*'))
+        
+    return sorted(glob.glob('/dev/ttyUSB*'))
 
 
 async def loop_mdu_serial_group() -> None:
@@ -989,18 +992,18 @@ async def loop_mdu_serial_group() -> None:
 def auto_detect_binary_serial_ports() -> list[str]:
     """
     Find candidate ports that emit binary CAN mirror frames.
-    These are distinct from the SLCAN text ports used by loop_mdu_serial_group.
-
-    Priority:
-      1. USB_BINARY_PORTS env var (comma-separated) — explicit override, no dedup needed.
-      2. Otherwise: /dev/ttyUSB* only (binary bridge dongles), since /dev/ttyACM*
-         ports are already claimed by loop_mdu_serial_group for SLCAN text.
+    On Linux/Pi, native STM32 CDC endpoints enumerate as /dev/ttyACM*.
+    On macOS they enumerate as /dev/tty.usbmodem* or /dev/cu.usbmodem*.
     """
+    import platform
     include = os.environ.get('USB_BINARY_PORTS', '').strip()
     if include:
         return [port.strip() for port in include.split(',') if port.strip()]
-    # Fall back to USB dongle ports; ttyACM* are reserved for SLCAN text.
-    return sorted(glob.glob('/dev/ttyUSB*'))
+        
+    if platform.system() == 'Darwin':
+        return sorted(glob.glob('/dev/tty.usbmodem*')) + sorted(glob.glob('/dev/cu.usbmodem*'))
+        
+    return sorted(glob.glob('/dev/ttyACM*'))
 
 
 def extract_binary_can_frames(buffer: bytes) -> tuple[list[tuple[int, bytes]], bytes, int]:
