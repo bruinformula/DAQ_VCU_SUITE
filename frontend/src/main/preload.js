@@ -31,6 +31,7 @@ contextBridge.exposeInMainWorld('mduDebug', {
   writeFile: (filePath, content) => ipcRenderer.invoke('file:write', filePath, content),
   parseTelemetryFile: (filePath) => ipcRenderer.invoke('file:parse-telemetry', filePath),
   parseWifiFrame: (id, dataHex) => ipcRenderer.invoke('wifi:parse-frame', { id, dataHex }),
+  parseWifiFrames: (frames) => ipcRenderer.invoke('wifi:parse-frames', frames),
   onPorts: (callback) => subscribe('device:ports', callback),
   onConnection: (callback) => subscribe('device:connection', callback),
   onDiagnostics: (callback) => subscribe('device:diagnostics', callback),

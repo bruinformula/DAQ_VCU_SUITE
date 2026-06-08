@@ -557,8 +557,9 @@ export function TelemetryProvider({ children }) {
         const rawPayload = JSON.parse(event.data);
         const frames = Array.isArray(rawPayload) ? rawPayload : [rawPayload];
         
-        for (const json of frames) {
-          const parsedFrame = await window.mduDebug.parseWifiFrame(json.id, json.d ?? '');
+        // Use the batched IPC call for much higher throughput
+        const parsedFrames = await window.mduDebug.parseWifiFrames(frames);
+        for (const parsedFrame of parsedFrames) {
           if (parsedFrame && parsedFrame.ok) {
             updateStateFromBoard(
               latestStateRef.current,
@@ -568,6 +569,7 @@ export function TelemetryProvider({ children }) {
             );
           }
         }
+        
         lastMessageAtRef.current = Date.now();
         setWifiState('connected');
         setWifiMessage(`Streaming from ${nextIp}.`);
@@ -575,7 +577,7 @@ export function TelemetryProvider({ children }) {
           window.mduDebug.logWiFiFrame({
             type: 'wifi_raw_frame',
             timestamp: new Date().toISOString(),
-            frame: json,
+            frame: rawPayload,
           });
         }
       } catch (err) {

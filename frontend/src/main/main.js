@@ -855,6 +855,54 @@ function registerIpcHandlers() {
     return parseSlcanToBoard(slcan, slcan.raw);
   });
 
+  ipcMain.handle('wifi:parse-frames', (_event, frames) => {
+    const results = [];
+    for (const frame of frames) {
+      if (!Number.isFinite(frame.id) || typeof frame.d !== 'string') {
+        continue;
+      }
+      const upperHex = frame.d.toUpperCase();
+      const dataBytes = [];
+      for (let i = 0; i < upperHex.length; i += 2) {
+        dataBytes.push(parseInt(upperHex.substring(i, i + 2), 16));
+      }
+      const identifierHex = frame.id.toString(16).toUpperCase().padStart(3, '0');
+      const idType = frame.id > 0x7FF ? 'extended' : 'standard';
+      const slcan = {
+        ok: true,
+        raw: `t${identifierHex}${(dataBytes.length).toString(16).padStart(2, '0')}${upperHex}`,
+        frameType: idType === 'standard' ? 't' : 'T',
+        idType,
+        identifier: frame.id,
+        identifierHex,
+        idText: `0x${identifierHex}`,
+        dataLength: dataBytes.length,
+        dataHex: upperHex,
+        dataBytes,
+      };
+      
+      const parsed = parseSlcanToBoard(slcan, slcan.raw);
+      if (parsed && parsed.ok) {
+        results.push({
+          ok: true,
+          board: parsed.board,
+          identifier: frame.id,
+          dataBytes: slcan.dataBytes,
+          raw: parsed.raw,
+          source: 'wifi',
+          idText: parsed.idText,
+          idType: parsed.idType,
+          dataLength: parsed.dataLength,
+          dataHex: parsed.dataHex
+        });
+      }
+    }
+    if (results.length > 0) {
+      broadcast('device:frames', results);
+    }
+    return results;
+  });
+
   ipcMain.handle('app:get-initial-state', async () => monitor.getInitialState());
   ipcMain.handle('serial:list-ports', async () => monitor.listPorts());
   ipcMain.handle('serial:connect', async (_event, options) => monitor.connect(options));

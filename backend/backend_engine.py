@@ -1406,11 +1406,16 @@ async def loop_binary_serial_port(port: str, baudrate: int) -> None:
                     pass
 
             buffer = b''
+            last_print = time.time()
+            bytes_read = 0
+            frames_read = 0
+            
             while True:
                 chunk = await reader.read(4096)
                 if not chunk:
                     break
 
+                bytes_read += len(chunk)
                 buffer += chunk
                 parsed_frames, buffer, parse_errors = extract_binary_can_frames(buffer)
                 if parse_errors:
@@ -1423,8 +1428,17 @@ async def loop_binary_serial_port(port: str, baudrate: int) -> None:
                         # (same as loop_mdu_serial and loop_socketcan already do).
                         _enqueue_raw_frame(can_id, len(payload), payload.hex().upper())
                         STATE.frames_parsed += 1
+                        frames_read += 1
                     except Exception:
                         STATE.frames_errors += 1
+                        
+                now = time.time()
+                if now - last_print >= 5.0:
+                    print(f"[BINARY SERIAL] {port}: read {bytes_read} bytes, parsed {frames_read} frames in the last 5s")
+                    bytes_read = 0
+                    frames_read = 0
+                    last_print = now
+
         except Exception as e:
             print(f"[BINARY SERIAL] {port} connection error: {e}. Retrying in 2s...")
             await asyncio.sleep(2)
