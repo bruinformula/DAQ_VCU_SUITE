@@ -912,10 +912,8 @@ MOCK_MODE = os.environ.get('TELEMETRY_MOCK', '').lower() in ('1', 'true', 'yes')
 # LOOP A: USB Serial Readers
 # ---------------------------------------------------------------------------
 
-async def loop_mdu_serial():
-    """Read SLCAN frames from the MDU's USB CDC port."""
-    print("[SYSTEM] MDU Serial Loop Started.")
-
+async def loop_mdu_serial_port(port: str, baud: int) -> None:
+    """Read SLCAN frames from one MDU USB CDC port."""
     try:
         import serial_asyncio
     except ImportError:
@@ -923,15 +921,12 @@ async def loop_mdu_serial():
         print("[SYSTEM] Install with: pip install pyserial-asyncio")
         return
 
-    serial_port = os.environ.get('SERIAL_PORT', '/dev/ttyUSB0')
-    serial_baud = int(os.environ.get('SERIAL_BAUD', '115200'))
-
     while True:
         try:
             reader, writer = await serial_asyncio.open_serial_connection(
-                url=serial_port, baudrate=serial_baud
+                url=port, baudrate=baud
             )
-            print(f"[SERIAL] Connected to {serial_port}")
+            print(f"[SERIAL] Connected to {port}")
 
             buffer = b''
             while True:
@@ -955,12 +950,40 @@ async def loop_mdu_serial():
                             _process_frame(frame)
                         else:
                             STATE.frames_errors += 1
-                    except Exception as e:
+                    except Exception:
                         STATE.frames_errors += 1
 
         except Exception as e:
-            print(f"[SERIAL] Connection error: {e}. Retrying in 2s...")
+            print(f"[SERIAL] {port} connection error: {e}. Retrying in 2s...")
             await asyncio.sleep(2)
+
+
+def auto_detect_mdu_serial_ports() -> list[str]:
+    """
+    Find all USB serial ports that could be MDU CDC interfaces.
+    The MDU exposes 4 USB CDC interfaces — each SDU board outputs SLCAN text
+    on its own port. On Linux/Pi these enumerate as /dev/ttyACM* or /dev/ttyUSB*.
+    The USB_MDU_PORTS env var can override with a comma-separated list.
+    """
+    override = os.environ.get('USB_MDU_PORTS', '').strip()
+    if override:
+        return [p.strip() for p in override.split(',') if p.strip()]
+    candidates = sorted(glob.glob('/dev/ttyACM*')) + sorted(glob.glob('/dev/ttyUSB*'))
+    return candidates
+
+
+async def loop_mdu_serial_group() -> None:
+    """Start one SLCAN reader task per detected MDU USB CDC port."""
+    print("[SYSTEM] MDU Serial Group Started.")
+    ports = auto_detect_mdu_serial_ports()
+    if not ports:
+        print("[SERIAL] No MDU serial ports detected; skipping SLCAN serial group.")
+        return
+
+    baud = int(os.environ.get('SERIAL_BAUD', '115200'))
+    print(f"[SERIAL] Starting SLCAN readers for: {', '.join(ports)}")
+    for port in ports:
+        asyncio.create_task(loop_mdu_serial_port(port, baud))
 
 
 def auto_detect_binary_serial_ports() -> list[str]:
@@ -2095,7 +2118,7 @@ async def lifespan(app: FastAPI):
         print("[SYSTEM] === MOCK MODE ENABLED ===")
         asyncio.create_task(loop_mock_generator())
     else:
-        asyncio.create_task(loop_mdu_serial())
+        asyncio.create_task(loop_mdu_serial_group())
         asyncio.create_task(loop_binary_serial_group())
         asyncio.create_task(loop_socketcan())
 
