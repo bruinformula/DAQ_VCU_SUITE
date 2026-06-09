@@ -252,7 +252,7 @@ class TelemetryState:
         self._high_rate_queue: deque = deque()
 
         # Logging state
-        self.is_logging: bool = False
+        self.is_logging: bool = True
         self.log_signal_ids: list[str] = []
         self.pending_log_filename: str = ""
         self.active_log_filename: str = ""
