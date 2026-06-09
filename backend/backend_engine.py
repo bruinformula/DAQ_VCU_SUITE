@@ -226,23 +226,26 @@ class TelemetryState:
         ]
 
         # TSHMU flow frame(s). The current firmware source explicitly defines
-        # board 0 on CAN ID 0x102.
-        self.tshmu = {
-            'flow1': 0.0,
-            'flow2': 0.0,
-            'raw1': 0,
-            'raw2': 0,
-            'jitter_us': 0,
-            'error_flags': 0,
-            'base_timestamp': 0,
-            'temp1': 0.0,
-            'temp2': 0.0,
-            'temp3': 0.0,
-            'temp4': 0.0,
-            'temp5': 0.0,
-            'temp6': 0.0,
-            'temp_jitter_ms': 0,
-        }
+        # board 0 on CAN ID 0x102. Support up to 2 TSHMUs.
+        self.tshmu = [
+            {
+                'flow1': 0.0,
+                'flow2': 0.0,
+                'raw1': 0,
+                'raw2': 0,
+                'jitter_us': 0,
+                'error_flags': 0,
+                'base_timestamp': 0,
+                'temp1': 0.0,
+                'temp2': 0.0,
+                'temp3': 0.0,
+                'temp4': 0.0,
+                'temp5': 0.0,
+                'temp6': 0.0,
+                'temp_jitter_ms': 0,
+            }
+            for _ in range(2)
+        ]
 
         # High-rate sample queue: individual sensor samples pushed per CAN frame,
         # drained by the CSV logger each tick so every sample gets its own row.
@@ -639,20 +642,26 @@ class TelemetryState:
         if not samples:
             return
         latest = samples[-1]
-        self.tshmu['flow1'] = float(latest.get('flow1', self.tshmu['flow1']))
-        self.tshmu['flow2'] = float(latest.get('flow2', self.tshmu['flow2']))
-        self.tshmu['raw1'] = int(latest.get('raw1', self.tshmu['raw1']))
-        self.tshmu['raw2'] = int(latest.get('raw2', self.tshmu['raw2']))
-        self.tshmu['jitter_us'] = int(latest.get('jitter_us', self.tshmu['jitter_us']))
-        self.tshmu['error_flags'] = int(latest.get('error_flags', self.tshmu['error_flags']))
-        self.tshmu['base_timestamp'] = int(latest.get('base_timestamp', self.tshmu['base_timestamp']))
+        board_id = int(latest.get('board_id', 0))
+        if board_id < 0 or board_id >= len(self.tshmu):
+            return
+        
+        t = self.tshmu[board_id]
+        t['flow1'] = float(latest.get('flow1', t['flow1']))
+        t['flow2'] = float(latest.get('flow2', t['flow2']))
+        t['raw1'] = int(latest.get('raw1', t['raw1']))
+        t['raw2'] = int(latest.get('raw2', t['raw2']))
+        t['jitter_us'] = int(latest.get('jitter_us', t['jitter_us']))
+        t['error_flags'] = int(latest.get('error_flags', t['error_flags']))
+        t['base_timestamp'] = int(latest.get('base_timestamp', t['base_timestamp']))
+        
         now = time.time()
         n = len(samples)
         for i, s in enumerate(samples):
             self.push_high_rate_row(now - (n - 1 - i) * 0.001, {
-                'tshmu.flow1': round(s['flow1'], 1),
-                'tshmu.flow2': round(s['flow2'], 1),
-                'tshmu.jitter_us': s['jitter_us'],
+                f'tshmu[{board_id}].flow1': round(s['flow1'], 1),
+                f'tshmu[{board_id}].flow2': round(s['flow2'], 1),
+                f'tshmu[{board_id}].jitter_us': s['jitter_us'],
             })
 
     def apply_tshmu_temp_frame(self, blocks: list[dict[str, int | float]]) -> None:
@@ -660,24 +669,30 @@ class TelemetryState:
         if not blocks:
             return
         latest = blocks[-1]
-        self.tshmu['temp1'] = float(latest.get('temp1', self.tshmu['temp1']))
-        self.tshmu['temp2'] = float(latest.get('temp2', self.tshmu['temp2']))
-        self.tshmu['temp3'] = float(latest.get('temp3', self.tshmu['temp3']))
-        self.tshmu['temp4'] = float(latest.get('temp4', self.tshmu['temp4']))
-        self.tshmu['temp5'] = float(latest.get('temp5', self.tshmu['temp5']))
-        self.tshmu['temp6'] = float(latest.get('temp6', self.tshmu['temp6']))
-        self.tshmu['temp_jitter_ms'] = int(latest.get('jitter_ms', self.tshmu['temp_jitter_ms']))
+        board_id = int(latest.get('board_id', 0))
+        if board_id < 0 or board_id >= len(self.tshmu):
+            return
+            
+        t = self.tshmu[board_id]
+        t['temp1'] = float(latest.get('temp1', t['temp1']))
+        t['temp2'] = float(latest.get('temp2', t['temp2']))
+        t['temp3'] = float(latest.get('temp3', t['temp3']))
+        t['temp4'] = float(latest.get('temp4', t['temp4']))
+        t['temp5'] = float(latest.get('temp5', t['temp5']))
+        t['temp6'] = float(latest.get('temp6', t['temp6']))
+        t['temp_jitter_ms'] = int(latest.get('jitter_ms', t['temp_jitter_ms']))
+        
         now = time.time()
         n = len(blocks)
         for i, b in enumerate(blocks):
             self.push_high_rate_row(now - (n - 1 - i) * 0.001, {
-                'tshmu.temp1': round(b['temp1'], 3),
-                'tshmu.temp2': round(b['temp2'], 3),
-                'tshmu.temp3': round(b['temp3'], 3),
-                'tshmu.temp4': round(b['temp4'], 3),
-                'tshmu.temp5': round(b['temp5'], 3),
-                'tshmu.temp6': round(b['temp6'], 3),
-                'tshmu.temp_jitter_ms': b['jitter_ms'],
+                f'tshmu[{board_id}].temp1': round(b['temp1'], 3),
+                f'tshmu[{board_id}].temp2': round(b['temp2'], 3),
+                f'tshmu[{board_id}].temp3': round(b['temp3'], 3),
+                f'tshmu[{board_id}].temp4': round(b['temp4'], 3),
+                f'tshmu[{board_id}].temp5': round(b['temp5'], 3),
+                f'tshmu[{board_id}].temp6': round(b['temp6'], 3),
+                f'tshmu[{board_id}].temp_jitter_ms': b['jitter_ms'],
             })
 
     def to_broadcast_dict(self) -> dict:
@@ -836,21 +851,24 @@ class TelemetryState:
                 }
                 for i, b in enumerate(self.tspmu)
             ],
-            'tshmu': {
-                'flow1': round(self.tshmu['flow1'], 1),
-                'flow2': round(self.tshmu['flow2'], 1),
-                'raw1': self.tshmu['raw1'],
-                'raw2': self.tshmu['raw2'],
-                'jitter_us': self.tshmu['jitter_us'],
-                'error_flags': self.tshmu['error_flags'],
-                'temp1': round(self.tshmu['temp1'], 3),
-                'temp2': round(self.tshmu['temp2'], 3),
-                'temp3': round(self.tshmu['temp3'], 3),
-                'temp4': round(self.tshmu['temp4'], 3),
-                'temp5': round(self.tshmu['temp5'], 3),
-                'temp6': round(self.tshmu['temp6'], 3),
-                'temp_jitter_ms': self.tshmu['temp_jitter_ms'],
-            },
+            'tshmu': [
+                {
+                    'flow1': round(t['flow1'], 1),
+                    'flow2': round(t['flow2'], 1),
+                    'raw1': t['raw1'],
+                    'raw2': t['raw2'],
+                    'jitter_us': t['jitter_us'],
+                    'error_flags': t['error_flags'],
+                    'temp1': round(t['temp1'], 3),
+                    'temp2': round(t['temp2'], 3),
+                    'temp3': round(t['temp3'], 3),
+                    'temp4': round(t['temp4'], 3),
+                    'temp5': round(t['temp5'], 3),
+                    'temp6': round(t['temp6'], 3),
+                    'temp_jitter_ms': t['temp_jitter_ms'],
+                }
+                for t in self.tshmu
+            ],
             'log': self.is_logging,
             'log_file': self.active_log_filename,
             'log_signal_ids': self.log_signal_ids,

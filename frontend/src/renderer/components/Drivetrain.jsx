@@ -169,24 +169,40 @@ export default function Drivetrain({ data, boardDropouts, startTs }) {
     return {
       datasets: [
         {
-          label: 'Flow Rate 1',
-          data: parseLinearData('tshmu.flow1'),
+          label: 'B0 Flow 1',
+          data: parseLinearData('tshmu[0].flow1'),
           borderColor: '#3b82f6', // Blue
           borderWidth: 1.5,
           pointRadius: 0,
           tension: 0,
         },
         {
-          label: 'Flow Rate 2',
-          data: parseLinearData('tshmu.flow2'),
+          label: 'B0 Flow 2',
+          data: parseLinearData('tshmu[0].flow2'),
           borderColor: '#60a5fa', // Light Blue
           borderWidth: 1.5,
           pointRadius: 0,
           tension: 0,
         },
         {
+          label: 'B1 Flow 1',
+          data: parseLinearData('tshmu[1].flow1'),
+          borderColor: '#10b981', // Green
+          borderWidth: 1.5,
+          pointRadius: 0,
+          tension: 0,
+        },
+        {
+          label: 'B1 Flow 2',
+          data: parseLinearData('tshmu[1].flow2'),
+          borderColor: '#34d399', // Light Green
+          borderWidth: 1.5,
+          pointRadius: 0,
+          tension: 0,
+        },
+        {
           label: 'Jitter (x0.1 us)',
-          data: parseLinearData('tshmu.jitter_us', 1.0 / 10),
+          data: parseLinearData('tshmu[0].jitter_us', 1.0 / 10),
           borderColor: '#ec4899', // Pink
           borderWidth: 1,
           borderDash: [3, 3],

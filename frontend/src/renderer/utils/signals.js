@@ -402,15 +402,17 @@ export const signalGroups = [
   });
 });
 
-signalGroups.push({
-  id: 'tshmu',
-  name: 'TSHMU Flow',
-  signals: [
-    makeSignal('tshmu.flow1', 'Flow 1', 'L/min', '#00e5ff'),
-    makeSignal('tshmu.flow2', 'Flow 2', 'L/min', '#00ff7f'),
-    makeSignal('tshmu.jitter_us', 'Flow Jitter', 'us', '#ffb800', { precision: 0 }),
-    makeSignal('tshmu.error_flags', 'Flow Error Flags', 'bits', '#ff70a6', { precision: 0 }),
-  ],
+['0', '1'].forEach((boardId, idx) => {
+  signalGroups.push({
+    id: `tshmu_${idx}`,
+    name: `TSHMU Board ${boardId} Flow`,
+    signals: [
+      makeSignal(`tshmu[${idx}].flow1`, `Board ${boardId} Flow 1`, 'L/min', '#00e5ff'),
+      makeSignal(`tshmu[${idx}].flow2`, `Board ${boardId} Flow 2`, 'L/min', '#00ff7f'),
+      makeSignal(`tshmu[${idx}].jitter_us`, `Board ${boardId} Flow Jitter`, 'us', '#ffb800', { precision: 0 }),
+      makeSignal(`tshmu[${idx}].error_flags`, `Board ${boardId} Flow Error Flags`, 'bits', '#ff70a6', { precision: 0 }),
+    ],
+  });
 });
 
 export const ALL_SIGNALS = signalGroups.flatMap(group => group.signals);

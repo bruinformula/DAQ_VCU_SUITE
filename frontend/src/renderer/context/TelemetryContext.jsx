@@ -33,7 +33,8 @@ const initialSignalState = {
   'tspmu[1].temps[0]': 0.0, 'tspmu[1].temps[1]': 0.0, 'tspmu[1].temps[2]': 0.0, 'tspmu[1].temps[3]': 0.0,
 
   // TSHMU
-  'tshmu.flow1': 0.0, 'tshmu.flow2': 0.0, 'tshmu.jitter_us': 0, 'tshmu.error_flags': 0,
+  'tshmu[0].flow1': 0.0, 'tshmu[0].flow2': 0.0, 'tshmu[0].jitter_us': 0, 'tshmu[0].error_flags': 0,
+  'tshmu[1].flow1': 0.0, 'tshmu[1].flow2': 0.0, 'tshmu[1].jitter_us': 0, 'tshmu[1].error_flags': 0,
 
   // BMS & Inverter
   'bms.v': 0.0, 'bms.i': 0.0, 'bms.soc': 0.0, 'bms.avg_t': 0.0, 'bms.hi_t': 0.0, 'bms.lo_t': 0.0,
@@ -166,10 +167,10 @@ function updateStateFromBoard(state, board, id, dataBytes) {
         state[`sdu[${bid}].tire[3]`] = board.tireC.ambient;
       }
     } else if (bt === 4) { // TSHMU
-      if (board.flow1 !== undefined) state['tshmu.flow1'] = board.flow1;
-      if (board.flow2 !== undefined) state['tshmu.flow2'] = board.flow2;
-      if (board.jitter !== undefined) state['tshmu.jitter_us'] = board.jitter;
-      if (board.errorFlags !== undefined) state['tshmu.error_flags'] = board.errorFlags;
+      if (board.flow1 !== undefined) state[`tshmu[${bid}].flow1`] = board.flow1;
+      if (board.flow2 !== undefined) state[`tshmu[${bid}].flow2`] = board.flow2;
+      if (board.jitter !== undefined) state[`tshmu[${bid}].jitter_us`] = board.jitter;
+      if (board.errorFlags !== undefined) state[`tshmu[${bid}].error_flags`] = board.errorFlags;
     } else if (bt === 6) { // TSPMU
       if (board.pressure1 !== undefined) state[`tspmu[${bid}].p1`] = board.pressure1;
       if (board.pressure2 !== undefined) state[`tspmu[${bid}].p2`] = board.pressure2;

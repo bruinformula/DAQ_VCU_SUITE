@@ -67,7 +67,8 @@ export default function Overview({ data, dropouts = [], startTs = 0 }) {
       sdu1: validRows.some(row => parseFloat(row['sdu[1].brake']) > 0),
       sdu2: validRows.some(row => parseFloat(row['sdu[2].brake']) > 0),
       sdu3: validRows.some(row => parseFloat(row['sdu[3].brake']) > 0),
-      tshmu: validRows.some(row => parseFloat(row['tshmu.flow1']) > 0 || parseFloat(row['tshmu.jitter_us']) > 0),
+      tshmu0: validRows.some(row => parseFloat(row['tshmu[0].flow1']) > 0 || parseFloat(row['tshmu[0].jitter_us']) > 0),
+      tshmu1: validRows.some(row => parseFloat(row['tshmu[1].flow1']) > 0 || parseFloat(row['tshmu[1].jitter_us']) > 0),
       tspmu0: validRows.some(row => parseFloat(row['tspmu[0].p1']) > 0),
       tspmu1: validRows.some(row => parseFloat(row['tspmu[1].p1']) > 0),
     };
@@ -274,9 +275,15 @@ export default function Overview({ data, dropouts = [], startTs = 0 }) {
               </span>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', justifyBetween: 'space-between', padding: '0.75rem', background: 'rgba(0,0,0,0.2)', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
-              <span style={{ fontSize: '0.875rem' }}>Flow (TSHMU)</span>
-              <span className={`corner-label ${stats.activeBoards.tshmu ? 'corner-rl' : 'corner-fl'}`} style={{ marginLeft: 'auto' }}>
-                {stats.activeBoards.tshmu ? 'Active' : 'Offline'}
+              <span style={{ fontSize: '0.875rem' }}>Flow Board 0 (TSHMU)</span>
+              <span className={`corner-label ${stats.activeBoards.tshmu0 ? 'corner-rl' : 'corner-fl'}`} style={{ marginLeft: 'auto' }}>
+                {stats.activeBoards.tshmu0 ? 'Active' : 'Offline'}
+              </span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyBetween: 'space-between', padding: '0.75rem', background: 'rgba(0,0,0,0.2)', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
+              <span style={{ fontSize: '0.875rem' }}>Flow Board 1 (TSHMU)</span>
+              <span className={`corner-label ${stats.activeBoards.tshmu1 ? 'corner-rl' : 'corner-fl'}`} style={{ marginLeft: 'auto' }}>
+                {stats.activeBoards.tshmu1 ? 'Active' : 'Offline'}
               </span>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', justifyBetween: 'space-between', padding: '0.75rem', background: 'rgba(0,0,0,0.2)', borderRadius: '6px', border: '1px solid var(--border-color)' }}>

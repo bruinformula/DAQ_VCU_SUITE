@@ -144,9 +144,11 @@ export default function LiveDashboard() {
   // Pre-calculations for visual widgets
   const soc = Number(latestValues['bms.soc'] || 0);
   const rpm = Number(latestValues['inv.rpm'] || 0);
-  const flow1 = Number(latestValues['tshmu.flow1'] || 0);
-  const flow2 = Number(latestValues['tshmu.flow2'] || 0);
-  const flowAvg = (flow1 + flow2) / 2;
+  const flow1 = Number(latestValues['tshmu[0].flow1'] || 0);
+  const flow2 = Number(latestValues['tshmu[0].flow2'] || 0);
+  const flow3 = Number(latestValues['tshmu[1].flow1'] || 0);
+  const flow4 = Number(latestValues['tshmu[1].flow2'] || 0);
+  const flowAvg = (flow1 + flow2 + flow3 + flow4) / 4;
 
   // Session peak calculations
   const currentHiTemp = Number(latestValues['bms.hi_t'] || 0);
@@ -396,7 +398,8 @@ export default function LiveDashboard() {
     { key: '2-1', name: 'SDU FR', type: 2, id: 1 },
     { key: '2-2', name: 'SDU RL', type: 2, id: 2 },
     { key: '2-3', name: 'SDU RR', type: 2, id: 3 },
-    { key: '4-0', name: 'TSHMU Flow', type: 4, id: 0 },
+    { key: '4-0', name: 'TSHMU Flow 0', type: 4, id: 0 },
+    { key: '4-1', name: 'TSHMU Flow 1', type: 4, id: 1 },
     { key: '6-0', name: 'TSPMU FL', type: 6, id: 0 },
     { key: '6-1', name: 'TSPMU FR', type: 6, id: 1 },
     { key: '7-0', name: 'GPS / SMU', type: 7, id: 0 }
@@ -1259,14 +1262,16 @@ export default function LiveDashboard() {
             )}
 
             {/* Flow values */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', background: 'rgba(0,0,0,0.15)', padding: '0.5rem', borderRadius: '6px' }}>
               <div>
-                <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>Coolant Flow 1</span>
-                <strong style={{ fontSize: '1rem', display: 'block' }}>{val('tshmu.flow1', 1)} L/min</strong>
+                <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', fontWeight: 600 }}>TSHMU BOARD 0</span>
+                <div style={{ marginTop: '0.2rem' }}>Flow 1: <strong style={{ fontSize: '0.9rem' }}>{val('tshmu[0].flow1', 1)} L/min</strong></div>
+                <div>Flow 2: <strong style={{ fontSize: '0.9rem' }}>{val('tshmu[0].flow2', 1)} L/min</strong></div>
               </div>
               <div>
-                <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>Coolant Flow 2</span>
-                <strong style={{ fontSize: '1rem', display: 'block' }}>{val('tshmu.flow2', 1)} L/min</strong>
+                <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', fontWeight: 600 }}>TSHMU BOARD 1</span>
+                <div style={{ marginTop: '0.2rem' }}>Flow 1: <strong style={{ fontSize: '0.9rem' }}>{val('tshmu[1].flow1', 1)} L/min</strong></div>
+                <div>Flow 2: <strong style={{ fontSize: '0.9rem' }}>{val('tshmu[1].flow2', 1)} L/min</strong></div>
               </div>
             </div>
 
