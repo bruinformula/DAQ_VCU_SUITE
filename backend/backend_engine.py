@@ -1407,9 +1407,13 @@ def _process_can_payload(can_id: int, data: bytes) -> None:
         return
 
     STATE.record_can_activity(can_id, len(data))
-    signals = decode_can_frame(can_id, data)
-    if signals is not None:
-        STATE.apply_dbc_signals(can_id, signals)
+    
+    # As per user request, the backend is a dumb pipe.
+    # We no longer parse standard CAN or DBC files here; 
+    # it is all delegated to the React Frontend.
+    # signals = decode_can_frame(can_id, data)
+    # if signals is not None:
+    #     STATE.apply_dbc_signals(can_id, signals)
 
 
 async def loop_binary_serial_port(port: str, baudrate: int) -> None:

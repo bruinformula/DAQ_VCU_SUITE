@@ -56,6 +56,9 @@ export const signalGroups = [
       makeSignal('bms.i', 'Pack Current', 'A', '#ff2a4d'),
       makeSignal('bms.soc', 'State of Charge', '%', '#00e5ff'),
       makeSignal('bms.dcl', 'Discharge Current Limit', 'A', '#ffd670'),
+      makeSignal('bms.max_discharge', 'Max Discharge', 'A', '#ffb800'),
+      makeSignal('bms.max_charge', 'Max Charge', 'A', '#ff70a6'),
+      makeSignal('bms.precharge_complete', 'Precharge Complete', 'state', '#9bf6ff', { precision: 0 }),
     ],
   },
   {
@@ -299,6 +302,11 @@ export const signalGroups = [
       makeSignal('vcu.all.crosscheck_state', 'CAN Crosscheck', 'state', '#8cffc1', { precision: 0 }),
       makeSignal('vcu.all.apps_plausible', 'CAN APPS Plausible', 'state', '#caffbf', { precision: 0 }),
       makeSignal('vcu.all.looking_for_rtd', 'CAN Looking For RTD', 'state', '#ffd6a5', { precision: 0 }),
+      makeSignal('vcu.all.cooling_enable', 'CAN Cooling Enable', 'state', '#00ff7f', { precision: 0 }),
+      makeSignal('vcu.all.tractive_fan_pwm', 'CAN Tractive Fan PWM', '%', '#70d6ff'),
+      makeSignal('vcu.all.tractive_pump_pwm', 'CAN Tractive Pump PWM', '%', '#ffb800'),
+      makeSignal('vcu.all.accy_fan_pwm', 'CAN Accy Fan PWM', '%', '#ff2a4d'),
+      makeSignal('vcu.all.precharge_cmd', 'CAN Precharge CMD', 'state', '#00e5ff', { precision: 0 }),
     ],
   },
   {
