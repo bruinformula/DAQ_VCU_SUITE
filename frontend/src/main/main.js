@@ -301,7 +301,7 @@ function registerIpcHandlers() {
   });
 
   function decodeStandardCan(id, dataBytes) {
-    if (!dataBytes || dataBytes.length < 8) return null;
+    if (!dataBytes || dataBytes.length === 0) return null;
     
     function toSigned16(value) {
       return value > 32767 ? value - 65536 : value;

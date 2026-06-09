@@ -47,24 +47,24 @@ const initialSignalState = {
   'inv.all.eeprom_ver': 0, 'inv.all.sw_ver': 0, 'inv.all.date_mmdd': 0, 'inv.all.date_yyyy': 0,
   'inv.all.diag_record': 0,
   'inv.all.torque_cap_motor': 0.0, 'inv.all.torque_cap_regen': 0.0,
-  'inv.cmd.torque': 0.0, 'inv.cmd.speed': 0.0, 'inv.cmd.direction': 0, 'inv.cmd.enable': 0, 'inv.cmd.discharge': 0, 'inv.cmd.speed_mode': 0, 'inv.cmd.torque_limit': 0.0,
+  'inv.cmd.torque_command': 0.0, 'inv.cmd.speed_command': 0.0, 'inv.cmd.direction_command': 0, 'inv.cmd.inverter_enable': 0, 'inv.cmd.inverter_discharge': 0, 'inv.cmd.speed_mode': 0, 'inv.cmd.torque_limit_command': 0.0,
 
   // BMS New
   'bms.max_discharge': 0.0, 'bms.max_charge': 0.0, 'bms.precharge_complete': 0,
 
   // VCU New
-  'vcu.calc_vehicle_speed': 0, 'vcu.requested_torque': 0, 'vcu.apps1': 0, 'vcu.apps2': 0, 'vcu.bse': 0,
-  'vcu.imd_fault': 0, 'vcu.rtd_state': 0, 'vcu.precharge_relay_state': 0, 'vcu.air_pos_relay_state': 0, 'vcu.air_neg_relay_state': 0,
-  'vcu.cooling_enable': 0, 'vcu.tractive_fan_pwm': 0, 'vcu.tractive_pump_pwm': 0, 'vcu.accy_fan_pwm': 0, 'vcu.precharge_cmd': 0,
+  'vcu.all.calc_vehicle_speed': 0, 'vcu.all.requested_torque': 0, 'vcu.all.apps1_as_percent': 0, 'vcu.all.apps2_as_percent': 0, 'vcu.all.bse_as_percent': 0,
+  'vcu.all.imd_fault': 0, 'vcu.all.rtd_state': 0, 'vcu.all.precharge_relay_state': 0, 'vcu.all.air_pos_relay_state': 0, 'vcu.all.air_neg_relay_state': 0,
+  'vcu.all.cooling_enable': 0, 'vcu.all.tractive_fan_pwm': 0, 'vcu.all.tractive_pump_pwm': 0, 'vcu.all.accy_fan_pwm': 0, 'vcu.all.precharge_cmd': 0,
 
   // Fusebox New
-  'fusebox.state': 0, 'fusebox.dcdc_v': 0.0, 'fusebox.batt_v': 0.0, 'fusebox.lvb_soc': 0, 'fusebox.dcdc_temp': 0.0,
-  'fusebox.accy_fan_power': 0.0, 'fusebox.tractive_fan_power': 0.0, 'fusebox.tractive_pumps_power': 0.0, 'fusebox.charging_power': 0.0,
-  'fusebox.ambient_temp': 0.0,
+  'fusebox.all.fusebox_state': 0, 'fusebox.all.dcdc_voltage': 0.0, 'fusebox.all.battery_voltage': 0.0, 'fusebox.all.lvb_soc': 0, 'fusebox.all.dcdc_temp': 0.0,
+  'fusebox.all.accy_fan_power': 0.0, 'fusebox.all.tractive_fan_power': 0.0, 'fusebox.all.tractive_pumps_power': 0.0, 'fusebox.all.charging_power': 0.0,
+  'fusebox.all.ambient_temp': 0.0,
 };
 
 function decodeStandardCan(id, dataBytes) {
-  if (!dataBytes || dataBytes.length < 8) return null;
+  if (!dataBytes || dataBytes.length === 0) return null;
   
   function toSigned16(value) {
     return value > 32767 ? value - 65536 : value;

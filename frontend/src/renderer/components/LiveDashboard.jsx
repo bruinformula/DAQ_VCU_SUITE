@@ -30,6 +30,7 @@ export default function LiveDashboard() {
         const parsed = JSON.parse(saved);
         if (parsed.liveMap === undefined) parsed.liveMap = true;
         if (parsed.boardsHealth === undefined) parsed.boardsHealth = true;
+        if (parsed.powerStats === undefined) parsed.powerStats = true;
         return parsed;
       } catch (e) {}
     }
@@ -38,6 +39,7 @@ export default function LiveDashboard() {
       liveMap: true,
       boardsHealth: true,
       bms: true,
+      powerStats: true,
       inverter: true,
       vcu: true,
       flowPressures: true,
@@ -72,6 +74,7 @@ export default function LiveDashboard() {
   const DEFAULT_CARD_ORDER = [
     'chassis',
     'liveMap',
+    'powerStats',
     'bms',
     'inverter',
     'vcu',
@@ -895,6 +898,95 @@ export default function LiveDashboard() {
                   Fix: <strong style={{ color: '#00ff7f' }}>{getRtkStatus()}</strong>
                 </span>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* NEW: POWER SYSTEMS PANE */}
+        {visibilities.powerStats && (
+          <div className="glass-panel no-hover"
+            draggable={dragEnabledCard === 'powerStats'}
+            onDragStart={(e) => handleDragStart(e, 'powerStats')}
+            onDragEnd={handleDragEnd}
+            onDragOver={(e) => handleDragOver(e, 'powerStats')}
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '1rem',
+              border: '1px solid var(--border-color)',
+              order: cardOrder.indexOf('powerStats'),
+              opacity: draggedCardId === 'powerStats' ? 0.4 : 1,
+              transition: 'opacity 0.2s ease'
+            }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                <div 
+                  onMouseDown={() => setDragEnabledCard('powerStats')}
+                  onMouseUp={() => setDragEnabledCard(null)}
+                  style={{ cursor: 'grab', display: 'flex', alignItems: 'center', padding: '0.1rem', color: 'var(--text-secondary)', opacity: 0.6 }}
+                  title="Drag to reorder"
+                >
+                  <GripVertical size={14} />
+                </div>
+                <Activity size={16} className="text-yellow-400" style={{ marginLeft: '0.25rem' }} />
+                <h3 style={{ margin: 0, fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Power Systems</h3>
+              </div>
+              <span style={{ fontSize: '0.7rem', color: 'rgba(255, 255, 255, 0.7)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>HV & LV Overview</span>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+              {/* HV Column */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', background: 'rgba(0,0,0,0.2)', padding: '0.75rem', borderRadius: '8px' }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#ffb800', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.25rem' }}>HV SYSTEM</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>SOC</span>
+                  <span style={{ fontWeight: 'bold' }}>{val('bms.soc', 0)}%</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>Voltage</span>
+                  <span style={{ fontWeight: 'bold' }}>{val('bms.v', 1)} V</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>Current</span>
+                  <span style={{ fontWeight: 'bold' }}>{val('bms.i', 0)} A</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>Power</span>
+                  <span style={{ fontWeight: 'bold', color: currentPowerKw > 20 ? '#ef4444' : '#10b981' }}>{currentPowerKw.toFixed(1)} kW</span>
+                </div>
+              </div>
+
+              {/* LV Column */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', background: 'rgba(0,0,0,0.2)', padding: '0.75rem', borderRadius: '8px' }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#00e5ff', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.25rem' }}>LV SYSTEM</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>SOC</span>
+                  <span style={{ fontWeight: 'bold' }}>{val('fusebox.all.lvb_soc', 0)}%</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>Battery</span>
+                  <span style={{ fontWeight: 'bold' }}>{(Number(latestValues['fusebox.all.battery_voltage'] || 0) / 1000).toFixed(1)} V</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>DCDC</span>
+                  <span style={{ fontWeight: 'bold' }}>{(Number(latestValues['fusebox.all.dcdc_voltage'] || 0) / 1000).toFixed(1)} V</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>DCDC Temp</span>
+                  <span style={{ fontWeight: 'bold' }}>{val('fusebox.all.dcdc_temp', 0)} °C</span>
+                </div>
+              </div>
+            </div>
+            
+            <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem' }}>
+                <div style={{ flex: 1, display: 'flex', justifyContent: 'space-between', padding: '0.5rem', background: 'rgba(255, 255, 255, 0.03)', borderRadius: '6px' }}>
+                  <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>Tractive Power</span>
+                  <span style={{ fontSize: '0.8rem', fontWeight: 'bold' }}>{val('fusebox.all.tractive_pumps_power', 0)} W</span>
+                </div>
+                <div style={{ flex: 1, display: 'flex', justifyContent: 'space-between', padding: '0.5rem', background: 'rgba(255, 255, 255, 0.03)', borderRadius: '6px' }}>
+                  <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>Accy Fan</span>
+                  <span style={{ fontSize: '0.8rem', fontWeight: 'bold' }}>{val('fusebox.all.accy_fan_power', 0)} W</span>
+                </div>
             </div>
           </div>
         )}
