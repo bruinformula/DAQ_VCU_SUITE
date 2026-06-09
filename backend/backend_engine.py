@@ -698,6 +698,7 @@ class TelemetryState:
     def to_broadcast_dict(self) -> dict:
         """Construct the JSON payload for WebSocket broadcast."""
         now = time.time()
+        self.timestamp = now
         throughput = self.get_throughput_stats()
         gps_has_recent_pos = (now - self.gps_meta['position']) <= GPS_STALE_LIMIT_SEC
         gps_has_recent_nav = (now - self.gps_meta['nav']) <= GPS_STALE_LIMIT_SEC
