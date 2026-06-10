@@ -25,7 +25,7 @@ _ANSI_RE = re.compile(r'\x1B\[[0-9;?]*[ -/]*[@-~]')
 _CTRL_RE = re.compile(r'[\x00\x07\x08\x0B\x0C\x0E-\x1F]')
 
 
-@dataclass(slots=True)
+@dataclass
 class SlcanFrame:
     """A successfully parsed SLCAN frame."""
     raw: str
@@ -38,7 +38,7 @@ class SlcanFrame:
     data_bytes: list[int] = field(default_factory=list)  # Decoded byte values
 
 
-@dataclass(slots=True)
+@dataclass
 class SlcanError:
     """A failed parse attempt."""
     raw: str

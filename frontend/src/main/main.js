@@ -979,6 +979,38 @@ function registerIpcHandlers() {
     }
   });
 
+  ipcMain.handle('file:parse-can-log-python', async (_event, inputPath) => {
+    try {
+      const suiteDir = app.isPackaged 
+        ? path.dirname(app.getAppPath()) 
+        : path.resolve(__dirname, '../../..');
+      
+      const parsedLogsDir = path.join(suiteDir, 'parsed_logs');
+      await fs.promises.mkdir(parsedLogsDir, { recursive: true });
+      
+      const baseName = path.basename(inputPath, path.extname(inputPath));
+      const outputPath = path.join(parsedLogsDir, `${baseName}_DECODED.csv`);
+      
+      const scriptPath = path.join(suiteDir, 'backend', 'parse_can_log.py');
+      
+      return new Promise((resolve, reject) => {
+        const { spawn } = require('child_process');
+        const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
+        const child = spawn(pythonCmd, [scriptPath, inputPath, outputPath]);
+        let stderr = '';
+        child.stderr.on('data', data => stderr += data.toString());
+        child.on('close', code => {
+          if (code === 0) resolve(outputPath);
+          else reject(new Error(`Parser failed (code ${code}): ${stderr}`));
+        });
+        child.on('error', reject);
+      });
+    } catch (e) {
+      console.error('Error invoking python parser:', e);
+      throw e;
+    }
+  });
+
   ipcMain.handle('scan-network', async () => {
     for (const ip of COMMON_PI_HOSTS) {
       if (await verifyTelemetryHub(ip)) {
@@ -1109,6 +1141,17 @@ function registerIpcHandlers() {
     }
     return false;
   });
+  ipcMain.handle('dialog:open-file', async () => {
+    const result = await dialog.showOpenDialog({
+      title: 'Select File',
+      properties: ['openFile']
+    });
+    if (result.canceled || !result.filePaths?.length) {
+      return null;
+    }
+    return result.filePaths[0];
+  });
+
   ipcMain.handle('log:open-file', async () => {
     const result = await dialog.showOpenDialog({
       title: 'Open saved log file',

@@ -45,7 +45,7 @@ MIN_SDU_PAYLOAD_LENGTHS = {
 }
 
 
-@dataclass(slots=True)
+@dataclass
 class SduFrameInfo:
     """Parsed metadata from an SDU CAN ID."""
     board_type: int       # 2 = SDU, 6 = TSPMU
@@ -54,7 +54,7 @@ class SduFrameInfo:
     position: str         # 'FL', 'FR', 'RL', 'RR'
 
 
-@dataclass(slots=True)
+@dataclass
 class StrainGaugeBlock:
     """A single strain gauge sample block (6 channels)."""
     index: int
@@ -62,7 +62,7 @@ class StrainGaugeBlock:
     jitter_us: int
 
 
-@dataclass(slots=True)
+@dataclass
 class SensorSample:
     """A single time-stamped sensor sample."""
     index: int
@@ -70,7 +70,7 @@ class SensorSample:
     jitter_us: int
 
 
-@dataclass(slots=True)
+@dataclass
 class TireTempBlock:
     """A single tire temperature history block."""
     index: int
@@ -81,7 +81,7 @@ class TireTempBlock:
     jitter_ms: int
 
 
-@dataclass(slots=True)
+@dataclass
 class TspmuPressureBlock:
     """A single TSPMU pressure block."""
     index: int
@@ -90,7 +90,7 @@ class TspmuPressureBlock:
     jitter: int
 
 
-@dataclass(slots=True)
+@dataclass
 class TspmuTempBlock:
     """A single TSPMU temperature block."""
     index: int
@@ -101,7 +101,7 @@ class TspmuTempBlock:
     jitter_ms: int
 
 
-@dataclass(slots=True)
+@dataclass
 class SduDecodedFrame:
     """Complete decoded SDU frame."""
     board_type: int

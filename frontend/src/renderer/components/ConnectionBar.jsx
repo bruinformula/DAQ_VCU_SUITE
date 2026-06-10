@@ -337,6 +337,34 @@ export default function ConnectionBar() {
             <button className="button" onClick={scanFolder} title="Rescan Folder" style={{ padding: '0.25rem', display: 'flex', alignItems: 'center' }}>
               <RefreshCw size={14} />
             </button>
+            <button 
+              className="button" 
+              title="Parse Raw CAN Log into Timeline CSV"
+              onClick={async () => {
+                try {
+                  const filePath = await window.mduDebug.openFile();
+                  if (filePath) {
+                    if (!filePath.toLowerCase().includes('_can')) {
+                      if (!confirm('This file does not appear to be a raw _CAN.csv log. Parse anyway?')) return;
+                    }
+                    const btn = document.getElementById('parse-can-btn-icon');
+                    if(btn) btn.classList.add('animate-spin');
+                    const outPath = await window.mduDebug.parseCanLogPython(filePath);
+                    if(btn) btn.classList.remove('animate-spin');
+                    alert(`Successfully parsed and saved to:\n${outPath}`);
+                    scanFolder();
+                  }
+                } catch (e) {
+                  const btn = document.getElementById('parse-can-btn-icon');
+                  if(btn) btn.classList.remove('animate-spin');
+                  alert(`Parse failed: ${e.message}`);
+                }
+              }} 
+              style={{ padding: '0.25rem 0.5rem', display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.8rem' }}
+            >
+              <RefreshCw size={14} id="parse-can-btn-icon" />
+              <span>Parse Raw CAN</span>
+            </button>
           </div>
         )}
 
