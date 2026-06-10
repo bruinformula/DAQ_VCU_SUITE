@@ -897,6 +897,7 @@ function registerIpcHandlers() {
       const fileSize = stats.size;
       
       const inStream = fs.createReadStream(filePath);
+      const isRawCan = filePath.toUpperCase().includes('_CAN.CSV') || (headers.includes('id_dec') && headers.includes('data_hex'));
       const rl = readline.createInterface({ input: inStream });
       let step = 1;
       let lineIndex = 0;
@@ -910,7 +911,7 @@ function registerIpcHandlers() {
         }
         if (!line.trim()) continue;
         
-        if (lineIndex === 0) {
+        if (lineIndex === 0 && !isRawCan) {
           const avgLineSize = line.length + 1;
           const estimatedLines = Math.ceil(fileSize / avgLineSize);
           step = Math.ceil(estimatedLines / 20000);
@@ -920,7 +921,7 @@ function registerIpcHandlers() {
           }
         }
         
-        if (lineIndex % step === 0) {
+        if (isRawCan || lineIndex % step === 0) {
           const parts = line.split(',');
           const rowObj = {};
           for (let i = 0; i < headers.length; i++) {
@@ -931,7 +932,7 @@ function registerIpcHandlers() {
         lineIndex++;
       }
       
-      return decimateRows(rows);
+      return isRawCan ? rows : decimateRows(rows);
     }
     
     if (ext === '.jsonl') {
@@ -998,6 +999,15 @@ function registerIpcHandlers() {
         const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
         const child = spawn(pythonCmd, [scriptPath, inputPath, outputPath]);
         let stderr = '';
+        
+        child.stdout.on('data', data => {
+          const str = data.toString();
+          const match = str.match(/PROGRESS:\s*([0-9.]+)/);
+          if (match) {
+            _event.sender.send('parse-progress', parseFloat(match[1]));
+          }
+        });
+        
         child.stderr.on('data', data => stderr += data.toString());
         child.on('close', code => {
           if (code === 0) resolve(outputPath);
@@ -1063,10 +1073,14 @@ function registerIpcHandlers() {
       if (!Number.isFinite(frame.id) || typeof frame.d !== 'string') {
         continue;
       }
-      const upperHex = frame.d.toUpperCase();
+      const upperHex = frame.d.trim().toUpperCase();
       const dataBytes = [];
       for (let i = 0; i < upperHex.length; i += 2) {
-        dataBytes.push(parseInt(upperHex.substring(i, i + 2), 16));
+        const byteStr = upperHex.substring(i, i + 2);
+        if (byteStr.length === 2) {
+          const byteVal = parseInt(byteStr, 16);
+          if (!isNaN(byteVal)) dataBytes.push(byteVal);
+        }
       }
       const identifierHex = frame.id.toString(16).toUpperCase().padStart(3, '0');
       const idType = frame.id > 0x7FF ? 'extended' : 'standard';

@@ -419,6 +419,15 @@ export function TelemetryProvider({ children }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
+  // Playback engine state
+  const [isReplaying, setIsReplaying] = useState(false);
+  const [playbackTime, setPlaybackTime] = useState(0);
+  const [playbackSpeed, setPlaybackSpeed] = useState(1);
+  const [playbackDuration, setPlaybackDuration] = useState(0);
+  const [isRawCanDataset, setIsRawCanDataset] = useState(false);
+  const [playbackDataset, setPlaybackDataset] = useState([]);
+  const playbackRef = useRef({ lastRealTime: 0, lastIndexSent: 0, lastBinTime: 0 });
+
   // Live monitor statistics
   const [availablePorts, setAvailablePorts] = useState([]);
   const [connectionState, setConnectionState] = useState({ connected: false, port: null, baudRate: 115200 });
@@ -459,6 +468,30 @@ export function TelemetryProvider({ children }) {
   const lastMessageAtRef = useRef(0);
   const targetIpRef = useRef('');
 
+  const reverseRenameKey = (key) => {
+    if (key === 'ts' || key === 'id_dec' || key === 'data_hex') return key;
+    
+    // Reverse physical locations back to array indices
+    const boardPositions = { 'FL': 0, 'FR': 1, 'RL': 2, 'RR': 3 };
+    const m = key.match(/^([A-Z0-9]+)_(SDU|TSPMU|TSHMU)_(.*)$/);
+    if (m) {
+      const pos = m[1];
+      const prefix = m[2].toLowerCase();
+      const rest = m[3].toLowerCase();
+      
+      let idx = boardPositions[pos];
+      if (idx === undefined && pos.startsWith('B')) {
+        idx = parseInt(pos.substring(1));
+      }
+      
+      if (idx !== undefined) {
+        return `${prefix}[${idx}].${rest}`;
+      }
+    }
+    
+    return key.toLowerCase();
+  };
+
   // Load a file for playback
   const loadRunFile = async (filePath) => {
     setLoading(true);
@@ -466,14 +499,47 @@ export function TelemetryProvider({ children }) {
     try {
       const data = await window.mduDebug.parseTelemetryFile(filePath);
       if (data && data.length > 0) {
-        // Filter out dummy/initialization rows with zero or very low timestamps
-        const cleanedData = data.filter(row => {
-          const ts = parseFloat(row.ts);
-          return !isNaN(ts) && ts > 1000000.0;
+        // Reverse map keys back to internal UI format
+        const mappedData = data.map(row => {
+          const newRow = {};
+          for (const [k, v] of Object.entries(row)) {
+            newRow[reverseRenameKey(k)] = v;
+          }
+          return newRow;
         });
-        setActiveDataset(cleanedData.length > 0 ? cleanedData : data);
+
+        // Filter out dummy/initialization rows with zero or very low timestamps
+        const cleanedData = mappedData.filter(row => {
+          const ts = parseFloat(row.ts);
+          return !isNaN(ts) && ts > 1000000.0; // Filter timestamps (e.g. posix timestamp or large uptime)
+        });
+        
+        // If no valid timestamps found with the 1 million filter, just use the raw data (might be seconds from 0)
+        let finalData = cleanedData.length > 0 ? cleanedData : mappedData;
+        
+        // Ensure sorted by time
+        finalData.sort((a, b) => parseFloat(a.ts || 0) - parseFloat(b.ts || 0));
+
+        // Robustly detect raw CAN datasets by checking headers, rather than relying on filename
+        const isRaw = (finalData.length > 0 && finalData[0].id_dec !== undefined && finalData[0].data_hex !== undefined) || filePath.toUpperCase().includes('_CAN.CSV');
+        setIsRawCanDataset(isRaw);
+        setActiveDataset(finalData);
         setCurrentFilePath(filePath);
         setIsLiveMode(false);
+        setIsReplaying(false);
+        setPlaybackTime(0);
+        setPlaybackDataset([]);
+        liveBufferRef.current = [];
+        playbackRef.current = { lastRealTime: 0, lastIndexSent: 0, lastBinTime: 0, time: 0 };
+        
+        if (finalData.length > 1) {
+          const start = parseFloat(finalData[0].ts || 0);
+          const end = parseFloat(finalData[finalData.length - 1].ts || 0);
+          setPlaybackDuration(end - start);
+        } else {
+          setPlaybackDuration(0);
+        }
+        
       } else {
         setError('Parsed file was empty.');
       }
@@ -975,6 +1041,161 @@ export function TelemetryProvider({ children }) {
     setCurrentFilePath('');
   };
 
+  const seekTime = (t) => {
+    playbackRef.current.time = t;
+    playbackRef.current.lastBinTime = t;
+    setPlaybackTime(t);
+
+    if (!activeDataset || activeDataset.length === 0) return;
+
+    const startTs = parseFloat(activeDataset[0].ts || 0);
+    const targetTs = startTs + t;
+
+    let bestIndex = 0;
+    for (let i = 0; i < activeDataset.length; i++) {
+      if (parseFloat(activeDataset[i].ts) >= targetTs) {
+        bestIndex = i;
+        break;
+      }
+      bestIndex = i;
+    }
+
+    playbackRef.current.lastIndexSent = bestIndex > 0 ? bestIndex - 1 : 0;
+
+    if (bestIndex >= 0 && bestIndex < activeDataset.length) {
+      Object.assign(latestStateRef.current, activeDataset[bestIndex]);
+      setLatestValues({ ...latestStateRef.current });
+      
+      const bufferStartIdx = Math.max(0, bestIndex - 2000);
+      liveBufferRef.current = activeDataset.slice(bufferStartIdx, bestIndex + 1);
+      setPlaybackDataset([...liveBufferRef.current]);
+    }
+  };
+
+  // Replay Engine Loop
+  useEffect(() => {
+    if (!isReplaying || isLiveMode || !activeDataset || activeDataset.length === 0) return;
+
+    const startRealTime = performance.now();
+    const startLogTime = playbackRef.current.time;
+    let animationFrameId;
+    let isCancelled = false;
+
+    const tick = async () => {
+      if (isCancelled) return;
+      
+      const now = performance.now();
+      const elapsedRealSeconds = (now - startRealTime) / 1000.0;
+      
+      let newTime = startLogTime + (elapsedRealSeconds * playbackSpeed);
+      
+      if (newTime >= playbackDuration) {
+        newTime = playbackDuration;
+        setIsReplaying(false);
+      }
+
+      const startTs = parseFloat(activeDataset[0].ts || 0);
+      const endTsTarget = startTs + newTime;
+      const startTsTarget = startTs + playbackRef.current.time;
+
+      if (isRawCanDataset) {
+        let startIndex = playbackRef.current.lastIndexSent;
+        if (startIndex > 0 && parseFloat(activeDataset[startIndex].ts) > startTsTarget) {
+          startIndex = 0; // handle backwards scrubbing
+        }
+
+        const framesToParse = [];
+        let i = startIndex;
+        for (; i < activeDataset.length; i++) {
+          const row = activeDataset[i];
+          const rowTs = parseFloat(row.ts);
+          if (rowTs > endTsTarget) break;
+          if (rowTs >= startTsTarget) {
+            framesToParse.push({ id: parseInt(row.id_dec), d: row.data_hex });
+          }
+        }
+        playbackRef.current.lastIndexSent = i;
+
+        if (framesToParse.length > 0) {
+          try {
+            const parsedFrames = await window.mduDebug.parseWifiFrames(framesToParse);
+            if (isCancelled) return;
+            for (const parsedFrame of parsedFrames) {
+              if (parsedFrame && parsedFrame.ok) {
+                updateStateFromBoard(
+                  latestStateRef.current,
+                  parsedFrame.board,
+                  parsedFrame.identifier,
+                  parsedFrame.dataBytes
+                );
+              }
+            }
+            setLatestValues({ ...latestStateRef.current });
+          } catch (err) {
+            console.error('Replay parsing error', err);
+          }
+        }
+      } else {
+        // Fallback for pre-parsed DECODED.csv datasets
+        let closestRow = null;
+        let minDiff = Infinity;
+        let startIndex = playbackRef.current.lastIndexSent;
+        if (startIndex > 0 && parseFloat(activeDataset[startIndex].ts) > startTsTarget) {
+          startIndex = 0;
+        }
+        
+        let i = startIndex;
+        let bestIndex = startIndex;
+        for (; i < activeDataset.length; i++) {
+          const diff = Math.abs(parseFloat(activeDataset[i].ts) - endTsTarget);
+          if (diff < minDiff) {
+            minDiff = diff;
+            closestRow = activeDataset[i];
+            bestIndex = i;
+          }
+          if (parseFloat(activeDataset[i].ts) > endTsTarget) {
+             break;
+          }
+        }
+        // Save bestIndex so we don't accidentally skip ahead by breaking early
+        playbackRef.current.lastIndexSent = bestIndex > 0 ? bestIndex - 1 : 0;
+        
+        if (closestRow) {
+          Object.assign(latestStateRef.current, closestRow);
+          setLatestValues({ ...latestStateRef.current });
+        }
+      }
+
+      if (!isCancelled) {
+        playbackRef.current.time = newTime;
+        setPlaybackTime(newTime);
+        
+        // Bin into the playback dataset for sliding-window charts
+        if (newTime - playbackRef.current.lastBinTime >= 0.1 || newTime < playbackRef.current.lastBinTime) {
+          if (newTime < playbackRef.current.lastBinTime) {
+             // User scrubbed backwards; clear the buffer
+             liveBufferRef.current = [];
+          }
+          playbackRef.current.lastBinTime = newTime;
+          liveBufferRef.current.push({ ts: endTsTarget.toFixed(3), ...latestStateRef.current });
+          if (liveBufferRef.current.length > 2000) liveBufferRef.current.shift();
+          setPlaybackDataset([...liveBufferRef.current]);
+        }
+      }
+      
+      if (newTime < playbackDuration && !isCancelled) {
+        animationFrameId = requestAnimationFrame(tick);
+      }
+    };
+
+    animationFrameId = requestAnimationFrame(tick);
+
+    return () => {
+      isCancelled = true;
+      cancelAnimationFrame(animationFrameId);
+    };
+  }, [isReplaying, playbackSpeed, isLiveMode, activeDataset, playbackDuration, isRawCanDataset]);
+
   return (
     <TelemetryContext.Provider
       value={{
@@ -990,6 +1211,15 @@ export function TelemetryProvider({ children }) {
         connectionState,
         diagnostics,
         logStatus,
+        isRawCanDataset,
+        isReplaying,
+        playbackTime,
+        playbackSpeed,
+        playbackDuration,
+        playbackDataset,
+        setIsReplaying,
+        setPlaybackTime: seekTime,
+        setPlaybackSpeed,
         loadRunFile,
         selectDataFolder,
         scanFolder: () => scanFolder(folderPath),

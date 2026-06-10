@@ -38,7 +38,20 @@ def rename_key(key):
         idx = int(idx)
         pos = board_positions.get(idx, f"B{idx}")
         return f"{pos}_{prefix.upper()}_{rest.upper()}"
+    if key == 'ts' or key == 'id_dec' or key == 'data_hex':
+        return key
     return key.upper()
+
+class ByteTracker:
+    def __init__(self, f):
+        self.f = f
+        self.bytes_read = 0
+    def __iter__(self):
+        return self
+    def __next__(self):
+        line = next(self.f)
+        self.bytes_read += len(line.encode('utf-8'))
+        return line
 
 def parse_can_log(input_file: str, output_file: str):
     state = TelemetryState()
@@ -46,13 +59,36 @@ def parse_can_log(input_file: str, output_file: str):
     rows_to_write = []
     last_sample_ts = None
     
+    total_size = os.path.getsize(input_file)
+    row_count = 0
+    
+    time_offset = 0.0
+    previous_raw_ts = None
+    
     with open(input_file, 'r', encoding='utf-8') as f:
-        reader = csv.DictReader(f)
+        tracker = ByteTracker(f)
+        reader = csv.DictReader(tracker)
         for row in reader:
+            row_count += 1
+            if row_count % 10000 == 0:
+                percent = min(100.0, (tracker.bytes_read / total_size) * 100.0)
+                print(f"PROGRESS: {percent:.1f}", flush=True)
+
             if 'ts' not in row or 'id_dec' not in row or 'data_hex' not in row:
                 continue
                 
-            ts = float(row['ts'])
+            raw_ts = float(row['ts'])
+            
+            if previous_raw_ts is not None:
+                delta = raw_ts - previous_raw_ts
+                if delta < -1.0:
+                    # Time jumped backwards by more than 1s (e.g. a 60s clock rollover or reset)
+                    # Accumulate the offset so the timeline remains strictly continuous
+                    time_offset += (previous_raw_ts - raw_ts) + 0.001
+            
+            previous_raw_ts = raw_ts
+            ts = raw_ts + time_offset
+            
             can_id = int(row['id_dec'])
             data_hex = row['data_hex'].strip()
             
@@ -95,9 +131,13 @@ def parse_can_log(input_file: str, output_file: str):
                             state.apply_dbc_signals(can_id, signals)
 
             # Sample at 50Hz (0.02s) to avoid massive files, but keep it high res enough for graphs
+            # We use the monotonic `ts` so we don't have to worry about hardware rollovers
             if last_sample_ts is None or (ts - last_sample_ts) >= 0.02:
                 state.timestamp = ts
                 flat = state.to_signal_map()
+                # to_broadcast_dict() destructively sets state.timestamp to time.time()
+                # We must manually override it with our true log timestamp!
+                flat['ts'] = ts
                 renamed = {rename_key(k): v for k, v in flat.items()}
                 rows_to_write.append(renamed)
                 last_sample_ts = ts
@@ -111,11 +151,13 @@ def parse_can_log(input_file: str, output_file: str):
     for r in rows_to_write:
         all_keys.update(r.keys())
     
-    # Sort keys, ensure TS is first
+    # Sort keys, ensure ts is first
     sorted_keys = sorted(list(all_keys))
+    if 'ts' in sorted_keys:
+        sorted_keys.remove('ts')
     if 'TS' in sorted_keys:
         sorted_keys.remove('TS')
-    sorted_keys.insert(0, 'TS')
+    sorted_keys.insert(0, 'ts')
 
     # Ensure output dir exists
     Path(output_file).parent.mkdir(parents=True, exist_ok=True)

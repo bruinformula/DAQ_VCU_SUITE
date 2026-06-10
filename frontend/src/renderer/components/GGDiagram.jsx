@@ -18,14 +18,11 @@ const sensorOptions = [
 
 export default function GGDiagram({ samples = [], availableSignalIds = [] }) {
   const [sensorId, setSensorId] = useState(0);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [playbackIndex, setPlaybackIndex] = useState(0);
   const [swapAxes, setSwapAxes] = useState(false);
   const [viewMode, setViewMode] = useState('xy');
 
   const availableSensors = useMemo(() => (
     sensorOptions.filter((sensor) => {
-      // Allow fallback to generic imu.ax/imu.ay if it's the COG sensor
       if (sensor.id === 0) {
         return (availableSignalIds.includes(sensor.ax) && availableSignalIds.includes(sensor.ay)) ||
                (availableSignalIds.includes('imu.ax') && availableSignalIds.includes('imu.ay'));
@@ -54,7 +51,6 @@ export default function GGDiagram({ samples = [], availableSignalIds = [] }) {
       let ax = parseFloat(sample[axKey]);
       let ay = parseFloat(sample[ayKey]);
       
-      // Standardize m/s^2 to Gs if they look unscaled
       const toG = (val) => Math.abs(val) > 4.0 ? val / 9.80665 : val;
       
       if (isNaN(ax) || isNaN(ay)) {
@@ -75,42 +71,27 @@ export default function GGDiagram({ samples = [], availableSignalIds = [] }) {
     }).filter(Boolean);
   }, [samples, selectedSensor, swapAxes]);
 
-  useEffect(() => {
-    setPlaybackIndex(0);
-    setIsPlaying(false);
-  }, [selectedSensor]);
-
-  useEffect(() => {
-    if (!isPlaying || trace.length < 2) return undefined;
-
-    const timer = window.setInterval(() => {
-      setPlaybackIndex((current) => {
-        if (current >= trace.length - 1) {
-          setIsPlaying(false);
-          return trace.length - 1;
-        }
-        return current + 1;
-      });
-    }, 24);
-
-    return () => window.clearInterval(timer);
-  }, [isPlaying, trace.length]);
-
-  const currentIndex = clampPlayback(playbackIndex, 0, Math.max(trace.length - 1, 0));
-  const displayedTrace = trace.slice(0, currentIndex + 1);
+  const displayedTrace = trace;
   const currentPoint = displayedTrace[displayedTrace.length - 1] || null;
-  const totalDurationMs = trace.length > 1 ? trace[trace.length - 1].timestamp - trace[0].timestamp : 0;
-  const playbackDurationMs = displayedTrace.length > 1
-    ? displayedTrace[displayedTrace.length - 1].timestamp - displayedTrace[0].timestamp
-    : 0;
+
+  const maxes = useMemo(() => {
+    let maxLat = 0, minLat = 0, maxLong = 0, minLong = 0;
+    for (const pt of displayedTrace) {
+      if (pt.rawAy > maxLat) maxLat = pt.rawAy;
+      if (pt.rawAy < minLat) minLat = pt.rawAy;
+      if (pt.rawAx > maxLong) maxLong = pt.rawAx;
+      if (pt.rawAx < minLong) minLong = pt.rawAx;
+    }
+    return { maxLat, minLat, maxLong, minLong };
+  }, [displayedTrace]);
 
   return (
     <section className="glass-panel animated-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
-          <h2 className="section-title" style={{ marginBottom: '0.25rem' }}>G-G Diagram Replay</h2>
+          <h2 className="section-title" style={{ marginBottom: '0.25rem' }}>G-G Diagram</h2>
           <p className="text-slate-400" style={{ fontSize: '0.85rem' }}>
-            Playback acceleration envelope. Shading highlights older trace points fading, while the cursor displays active G vectors.
+            Live acceleration envelope and historical trace log.
           </p>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -127,32 +108,6 @@ export default function GGDiagram({ samples = [], availableSignalIds = [] }) {
               <option key={sensor.id} value={sensor.id}>{sensor.label}</option>
             ))}
           </select>
-          <button
-            type="button"
-            className="button"
-            onClick={() => {
-              if (currentIndex >= trace.length - 1) {
-                setPlaybackIndex(0);
-              }
-              setIsPlaying((current) => !current);
-            }}
-            disabled={trace.length < 2}
-            style={{ padding: '0.25rem 0.75rem', fontSize: '0.8rem' }}
-          >
-            {isPlaying ? 'Pause' : (currentIndex >= trace.length - 1 ? 'Replay' : 'Play')}
-          </button>
-          <button
-            type="button"
-            className="button"
-            onClick={() => {
-              setIsPlaying(false);
-              setPlaybackIndex(trace.length > 0 ? trace.length - 1 : 0);
-            }}
-            disabled={trace.length < 2}
-            style={{ padding: '0.25rem 0.75rem', fontSize: '0.8rem' }}
-          >
-            Show Full
-          </button>
           <label className="plotter-checkbox-label" style={{ userSelect: 'none', border: '1px solid var(--border-color)', padding: '0.25rem 0.5rem', background: 'rgba(255, 255, 255, 0.02)' }}>
             <input
               type="checkbox"
@@ -202,26 +157,18 @@ export default function GGDiagram({ samples = [], availableSignalIds = [] }) {
                     {swapAxes ? '-Ax (Long)' : '-Ay (Lat)'}
                   </text>
 
-                  {displayedTrace.slice(1).map((point, index) => {
-                    const previous = displayedTrace[index];
-                    const progress = displayedTrace.length <= 1 ? 1 : index / (displayedTrace.length - 1);
-                    const opacity = 0.12 + progress * 0.88;
-                    const x1 = CENTER + clampPlayback(previous.x, -2.5, 2.5) * (RADIUS / 2);
-                    const y1 = CENTER - clampPlayback(previous.y, -2.5, 2.5) * (RADIUS / 2);
-                    const x2 = CENTER + clampPlayback(point.x, -2.5, 2.5) * (RADIUS / 2);
-                    const y2 = CENTER - clampPlayback(point.y, -2.5, 2.5) * (RADIUS / 2);
+                  {displayedTrace.map((point) => {
+                    const cx = CENTER + clampPlayback(point.x, -2.5, 2.5) * (RADIUS / 2);
+                    const cy = CENTER - clampPlayback(point.y, -2.5, 2.5) * (RADIUS / 2);
 
                     return (
-                      <line
-                        key={`${previous.index}-${point.index}`}
-                        x1={x1.toFixed(1)}
-                        y1={y1.toFixed(1)}
-                        x2={x2.toFixed(1)}
-                        y2={y2.toFixed(1)}
-                        stroke={selectedSensor?.color || '#00e5ff'}
-                        strokeOpacity={opacity}
-                        strokeWidth="2"
-                        strokeLinecap="round"
+                      <circle
+                        key={point.index}
+                        cx={cx.toFixed(1)}
+                        cy={cy.toFixed(1)}
+                        r="1.5"
+                        fill={selectedSensor?.color || '#00e5ff'}
+                        opacity="0.6"
                       />
                     );
                   })}
@@ -246,27 +193,18 @@ export default function GGDiagram({ samples = [], availableSignalIds = [] }) {
                   <text x="44" y="28" fill="var(--text-secondary)" fontSize="9" fontWeight="600">
                     {viewMode === 'lat' ? 'Lateral Accel (G)' : 'Longitudinal Accel (G)'}
                   </text>
-                  {displayedTrace.slice(1).map((point, index) => {
-                    const previous = displayedTrace[index];
-                    const progress = displayedTrace.length <= 1 ? 1 : index / (displayedTrace.length - 1);
-                    const opacity = 0.12 + progress * 0.88;
-                    const x1 = 38 + ((index / Math.max(displayedTrace.length - 1, 1)) * 294);
-                    const x2 = 38 + (((index + 1) / Math.max(displayedTrace.length - 1, 1)) * 294);
-                    const prevValue = viewMode === 'lat' ? previous.rawAy : previous.rawAx;
-                    const nextValue = viewMode === 'lat' ? point.rawAy : point.rawAx;
-                    const y1 = 180 - (clampPlayback(prevValue, -2.5, 2.5) * 55);
-                    const y2 = 180 - (clampPlayback(nextValue, -2.5, 2.5) * 55);
+                  {displayedTrace.map((point, index) => {
+                    const cx = 38 + ((index / Math.max(displayedTrace.length - 1, 1)) * 294);
+                    const val = viewMode === 'lat' ? point.rawAy : point.rawAx;
+                    const cy = 180 - (clampPlayback(val, -2.5, 2.5) * 55);
                     return (
-                      <line
-                        key={`${previous.index}-${point.index}`}
-                        x1={x1.toFixed(1)}
-                        y1={y1.toFixed(1)}
-                        x2={x2.toFixed(1)}
-                        y2={y2.toFixed(1)}
-                        stroke={selectedSensor?.color || '#00e5ff'}
-                        strokeOpacity={opacity}
-                        strokeWidth="2"
-                        strokeLinecap="round"
+                      <circle
+                        key={point.index}
+                        cx={cx.toFixed(1)}
+                        cy={cy.toFixed(1)}
+                        r="1.5"
+                        fill={selectedSensor?.color || '#00e5ff'}
+                        opacity="0.6"
                       />
                     );
                   })}
@@ -274,54 +212,43 @@ export default function GGDiagram({ samples = [], availableSignalIds = [] }) {
               )}
             </div>
 
-            {/* Replay Stats List */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', padding: '0.75rem 1rem', background: 'rgba(0,0,0,0.15)', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
-                <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Playback Time</span>
-                <strong style={{ fontSize: '1.25rem', fontFamily: 'var(--font-mono)' }}>{formatPlaybackSeconds(playbackDurationMs)}</strong>
+            {/* Current Vector Data & Maxes */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div style={{ padding: '1.5rem', background: 'rgba(0,0,0,0.15)', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+                <h3 className="section-title" style={{ fontSize: '0.9rem', marginBottom: '1rem', color: 'var(--text-secondary)' }}>Live Vector Info</h3>
+                {currentPoint ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span className="text-slate-400">Lat Accel:</span>
+                      <strong style={{ color: selectedSensor?.color }}>{currentPoint.rawAy.toFixed(2)} G</strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span className="text-slate-400">Long Accel:</span>
+                      <strong style={{ color: selectedSensor?.color }}>{currentPoint.rawAx.toFixed(2)} G</strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span className="text-slate-400">Combined:</span>
+                      <strong style={{ color: '#fff' }}>{Math.sqrt(currentPoint.rawAx**2 + currentPoint.rawAy**2).toFixed(2)} G</strong>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-slate-400" style={{ fontSize: '0.85rem' }}>No data available</div>
+                )}
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', padding: '0.75rem 1rem', background: 'rgba(0,0,0,0.15)', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
-                <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Total Duration</span>
-                <strong style={{ fontSize: '1.25rem', fontFamily: 'var(--font-mono)' }}>{formatPlaybackSeconds(totalDurationMs)}</strong>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', padding: '0.75rem 1rem', background: 'rgba(0,0,0,0.15)', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
-                <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Current Index</span>
-                <strong style={{ fontSize: '1.25rem', fontFamily: 'var(--font-mono)' }}>{currentPoint ? `${currentIndex + 1} / ${trace.length}` : '--'}</strong>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', padding: '0.75rem 1rem', background: 'rgba(0,0,0,0.15)', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
-                <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Cursor Time</span>
-                <strong style={{ fontSize: '1.25rem', fontFamily: 'var(--font-mono)' }}>{currentPoint ? formatPlaybackTimestamp(currentPoint.timestamp) : '--'}</strong>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', padding: '0.75rem 1rem', background: 'rgba(0,0,0,0.15)', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
-                <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Lateral G</span>
-                <strong style={{ fontSize: '1.25rem', fontFamily: 'var(--font-mono)', color: '#00e5ff' }}>{currentPoint ? currentPoint.rawAy.toFixed(3) : '--'}</strong>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', padding: '0.75rem 1rem', background: 'rgba(0,0,0,0.15)', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
-                <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Longitudinal G</span>
-                <strong style={{ fontSize: '1.25rem', fontFamily: 'var(--font-mono)', color: '#ff2a4d' }}>{currentPoint ? currentPoint.rawAx.toFixed(3) : '--'}</strong>
-              </div>
-            </div>
-          </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '1rem' }}>
-            <input
-              type="range"
-              min="0"
-              max={Math.max(trace.length - 1, 0)}
-              value={currentIndex}
-              onChange={(event) => {
-                setIsPlaying(false);
-                setPlaybackIndex(Number(event.target.value));
-              }}
-              style={{
-                width: '100%',
-                cursor: 'pointer',
-                accentColor: 'var(--color-info)'
-              }}
-            />
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-              <span>Faded trace shows earlier positions</span>
-              <span>Solid cursor tracks active vector</span>
+              <div style={{ padding: '1.5rem', background: 'rgba(0,0,0,0.15)', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+                <h3 className="section-title" style={{ fontSize: '0.9rem', marginBottom: '1rem', color: 'var(--text-secondary)' }}>Session Maxes</h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span className="text-slate-400">Max Lat (L/R):</span>
+                    <strong style={{ color: selectedSensor?.color }}>{maxes.minLat.toFixed(2)} / {maxes.maxLat.toFixed(2)} G</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span className="text-slate-400">Max Long (B/A):</span>
+                    <strong style={{ color: selectedSensor?.color }}>{maxes.minLong.toFixed(2)} / {maxes.maxLong.toFixed(2)} G</strong>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </>

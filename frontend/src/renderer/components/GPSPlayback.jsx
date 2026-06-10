@@ -233,10 +233,9 @@ export default function GPSPlayback({ samples = [], availableSignalIds = [] }) {
   }, [points]);
 
   useEffect(() => {
-    if (playbackIndex >= points.length) {
-      setPlaybackIndex(Math.max(points.length - 1, 0));
-    }
-  }, [playbackIndex, points.length]);
+    setPlaybackIndex(0);
+    setIsPlaying(false);
+  }, [samples]);
 
   useEffect(() => {
     const handleFullscreenChange = () => {

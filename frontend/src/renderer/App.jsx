@@ -18,6 +18,7 @@ import GPSPlayback from './components/GPSPlayback';
 import LiveConsole from './components/LiveConsole';
 import DeployFirmware from './components/DeployFirmware';
 
+import PlaybackBar from './components/PlaybackBar';
 import { LayoutDashboard, Layers, BarChart3, Map, Table, Upload, AlertCircle, Activity, Compass, Zap, Terminal, Cpu } from 'lucide-react';
 
 // Helper to detect stale runs for a specific board or device
@@ -99,7 +100,7 @@ function detectBoardDropouts(data, boardType, globalGaps, startTs) {
     label = 'IMU DROP';
   }
 
-  const presentCols = cols.filter(col => data[0][col] !== undefined);
+  const presentCols = cols.filter(col => data[0] && data[0][col] !== undefined);
   if (presentCols.length === 0) return gaps;
 
   let streakStartIdx = -1;
@@ -172,8 +173,35 @@ function detectBoardDropouts(data, boardType, globalGaps, startTs) {
   return gaps;
 }
 
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null, errorInfo: null };
+  }
+  componentDidCatch(error, errorInfo) {
+    this.setState({ hasError: true, error, errorInfo });
+    console.error("REACT ERROR BOUNDARY CAUGHT:", error, errorInfo);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: '2rem', color: 'red', background: '#222' }}>
+          <h2>React Crashed!</h2>
+          <pre>{this.state.error && this.state.error.toString()}</pre>
+          <pre>{this.state.errorInfo && this.state.errorInfo.componentStack}</pre>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export default function App() {
-  const { activeDataset, loadRunFile, loading, error } = useTelemetry();
+  const { 
+    activeDataset, loadRunFile, loading, error, isLiveMode, 
+    playbackDuration, playbackTime, isReplaying, setIsReplaying, 
+    setPlaybackTime, playbackSpeed, setPlaybackSpeed, playbackDataset
+  } = useTelemetry();
   const [activeTab, setActiveTab] = useState('liveconsole');
   const [dragActive, setDragActive] = useState(false);
   const [hoveredIndex, setHoveredIndex] = useState(null);
@@ -288,34 +316,40 @@ export default function App() {
       );
     }
 
+    const displayDataset = (!isLiveMode && (isReplaying || playbackTime > 0)) ? (playbackDataset.length > 0 ? playbackDataset : activeDataset) : activeDataset;
+
     switch (activeTab) {
       case 'liveconsole':
         return <LiveConsole />;
       case 'overview':
-        return <Overview data={activeDataset} dropouts={dropouts} startTs={startTs} />;
+        return <Overview data={displayDataset} dropouts={dropouts} startTs={startTs} />;
       case 'overlays':
-        return <CornerOverlays data={activeDataset} boardDropouts={boardDropouts} startTs={startTs} />;
+        return <CornerOverlays data={displayDataset} boardDropouts={boardDropouts} startTs={startTs} />;
       case 'drivetrain':
-        return <Drivetrain data={activeDataset} boardDropouts={boardDropouts} startTs={startTs} />;
+        return <Drivetrain data={displayDataset} boardDropouts={boardDropouts} startTs={startTs} />;
       case 'imu':
-        return <ImuMotion data={activeDataset} boardDropouts={boardDropouts} startTs={startTs} />;
+        return <ImuMotion data={displayDataset} boardDropouts={boardDropouts} startTs={startTs} />;
       case 'tractive':
-        return <TractiveSystem data={activeDataset} boardDropouts={boardDropouts} startTs={startTs} />;
+        return <TractiveSystem data={displayDataset} boardDropouts={boardDropouts} startTs={startTs} />;
       case 'plotter':
-        return <CustomPlotter data={activeDataset} boardDropouts={boardDropouts} startTs={startTs} />;
+        return <CustomPlotter data={displayDataset} boardDropouts={boardDropouts} startTs={startTs} />;
       case 'trackmap':
         return (
           <TrackMap
-            data={activeDataset}
+            data={displayDataset}
             hoveredIndex={hoveredIndex}
             setHoveredIndex={setHoveredIndex}
           />
         );
       case 'table':
-        return <DataTable data={activeDataset} />;
+        return <DataTable data={displayDataset} />;
       case 'ggdiagram': {
-        const cols = activeDataset.length > 0 ? Object.keys(activeDataset[0]) : [];
-        return <GGDiagram samples={activeDataset} availableSignalIds={cols} />;
+        let ggData = displayDataset;
+        if (!isLiveMode) {
+          ggData = playbackDataset.length > 0 ? playbackDataset : (activeDataset.length > 0 ? [activeDataset[0]] : []);
+        }
+        const cols = ggData.length > 0 ? Object.keys(ggData[0]) : [];
+        return <GGDiagram samples={ggData} availableSignalIds={cols} />;
       }
       case 'gpsplayback': {
         const cols = activeDataset.length > 0 ? Object.keys(activeDataset[0]) : [];
@@ -452,6 +486,18 @@ export default function App() {
             <h3 style={{ fontSize: '1.25rem', fontWeight: 'bold', margin: 0 }}>Drop Telemetry Log to Load</h3>
             <p style={{ color: 'var(--text-secondary)', margin: 0 }}>Accepts parsed/raw CSV or JSONL formats</p>
           </div>
+        )}
+
+        {!isLiveMode && activeDataset.length > 0 && (
+          <PlaybackBar 
+            duration={playbackDuration}
+            currentTs={playbackTime}
+            isPlaying={isReplaying}
+            setPlaying={setIsReplaying}
+            setTime={setPlaybackTime}
+            speed={playbackSpeed}
+            setSpeed={setPlaybackSpeed}
+          />
         )}
 
         {renderActiveTabContent()}

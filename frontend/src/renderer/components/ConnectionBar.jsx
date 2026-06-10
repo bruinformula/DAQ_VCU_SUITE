@@ -44,6 +44,15 @@ export default function ConnectionBar() {
   const [remoteLogName, setRemoteLogName] = useState('');
   const [selectedWifiLog, setSelectedWifiLog] = useState('');
   const [isDownloadingWifiLog, setIsDownloadingWifiLog] = useState(false);
+  const [parseProgress, setParseProgress] = useState(null);
+
+  useEffect(() => {
+    if (window.mduDebug?.onParseProgress) {
+      return window.mduDebug.onParseProgress((percent) => {
+        setParseProgress(percent);
+      });
+    }
+  }, []);
 
   useEffect(() => {
     if (targetIp) {
@@ -349,7 +358,9 @@ export default function ConnectionBar() {
                     }
                     const btn = document.getElementById('parse-can-btn-icon');
                     if(btn) btn.classList.add('animate-spin');
+                    setParseProgress(0);
                     const outPath = await window.mduDebug.parseCanLogPython(filePath);
+                    setParseProgress(null);
                     if(btn) btn.classList.remove('animate-spin');
                     alert(`Successfully parsed and saved to:\n${outPath}`);
                     scanFolder();
@@ -357,6 +368,7 @@ export default function ConnectionBar() {
                 } catch (e) {
                   const btn = document.getElementById('parse-can-btn-icon');
                   if(btn) btn.classList.remove('animate-spin');
+                  setParseProgress(null);
                   alert(`Parse failed: ${e.message}`);
                 }
               }} 
@@ -365,6 +377,11 @@ export default function ConnectionBar() {
               <RefreshCw size={14} id="parse-can-btn-icon" />
               <span>Parse Raw CAN</span>
             </button>
+            {parseProgress !== null && (
+              <span style={{ fontSize: '0.8rem', color: '#10b981', fontWeight: 'bold' }}>
+                {parseProgress.toFixed(0)}%
+              </span>
+            )}
           </div>
         )}
 
