@@ -324,8 +324,13 @@ class TelemetryState:
             'total_bytes': int(self.total_ingress_bytes),
         }
 
-    def apply_dbc_signals(self, can_id: int, signals: dict[str, float]) -> None:
-        """Apply decoded DBC signals to the state object."""
+    def apply_dbc_signals(self, can_id: int, signals: dict[str, float], log_timestamp: float = None) -> None:
+        """Apply a decoded standard CAN dictionary to state."""
+        now = log_timestamp if log_timestamp is not None else time.time()
+        for sig_name, sig_val in signals.items():
+            self._dbc[sig_name] = sig_val
+        self.push_high_rate_row(now, {k: v for k, v in signals.items()})
+
         self.update_inverter_payloads(signals)
         self.update_aux_payloads(can_id, signals)
 
@@ -477,11 +482,13 @@ class TelemetryState:
             self.fusebox_ambient_temp = signals.get('Ambient_Temp', self.fusebox_ambient_temp)
             self.fusebox_meta['ambient_temp'] = time.time()
 
-    def apply_imu_raw_frame(self, can_id: int, data: bytes) -> None:
+    def apply_imu_raw_frame(self, can_id: int, data: bytes, log_timestamp: float = None) -> None:
         """Decode IMU frames directly using struct unpack."""
         import struct
         if len(data) < 6:
             return
+        
+        now = log_timestamp if log_timestamp is not None else time.time()
 
         try:
             # Map CAN ID to board index and frame type
@@ -500,7 +507,7 @@ class TelemetryState:
             if is_accel:
                 # Accel X, Y, Z as signed 16-bit little endian
                 x_mg, y_mg, z_mg = struct.unpack('<hhh', data[0:6])
-                if (time.time() - imu_meta['fd']) > 1.5:
+                if (now - imu_meta['fd']) > 1.5:
                     imu['ax'] = round(x_mg / 1000.0, 3)
                     imu['ay'] = round(y_mg / 1000.0, 3)
                     imu['az'] = round(z_mg / 1000.0, 3)
@@ -508,7 +515,7 @@ class TelemetryState:
                         imu['cal'] = int(data[6])
                     else:
                         imu['cal'] = 0
-                    imu_meta['accel'] = time.time()
+                    imu_meta['accel'] = now
 
                     # Keep legacy COG values in sync
                     if board_idx == 0:
@@ -516,14 +523,26 @@ class TelemetryState:
                         self.imu_ay = imu['ay']
                         self.imu_az = imu['az']
                         self.imu_cal = imu['cal']
+                        
+                    self.push_high_rate_row(now, {
+                        f'imu[{board_idx}].ax': imu['ax'],
+                        f'imu[{board_idx}].ay': imu['ay'],
+                        f'imu[{board_idx}].az': imu['az'],
+                        f'imu[{board_idx}].cal': imu['cal']
+                    })
             else:
                 # Attitude Pitch, Roll, Yaw as signed 16-bit little endian in centidegrees
                 pitch_cd, roll_cd, yaw_cd = struct.unpack('<hhh', data[0:6])
                 imu['pitch'] = round(pitch_cd / 100.0, 1)
                 imu['roll'] = round(roll_cd / 100.0, 1)
                 imu['yaw'] = round(yaw_cd / 100.0, 1)
-                imu_meta['attitude'] = time.time()
-
+                imu_meta['attitude'] = now
+                
+                self.push_high_rate_row(now, {
+                    f'imu[{board_idx}].pitch': imu['pitch'],
+                    f'imu[{board_idx}].roll': imu['roll'],
+                    f'imu[{board_idx}].yaw': imu['yaw']
+                })
                 # Keep legacy COG values in sync
                 if board_idx == 0:
                     self.imu_pitch = imu['pitch']
@@ -532,7 +551,7 @@ class TelemetryState:
         except Exception as e:
             self.frames_errors += 1
 
-    def apply_imu_fd_frame(self, decoded: dict) -> None:
+    def apply_imu_fd_frame(self, decoded: dict, log_timestamp: float = None) -> None:
         """Apply a decoded IMU FD frame (velocity, angular acceleration, gyro) to state."""
         board_idx = decoded['board_idx']
         if not (0 <= board_idx < 3):
@@ -560,7 +579,7 @@ class TelemetryState:
             self.imu_ay = imu['ay']
             self.imu_az = imu['az']
 
-        now = time.time()
+        now = log_timestamp if log_timestamp is not None else time.time()
         self.imu_meta[board_idx]['fd'] = now
 
         # Push both samples to the high-rate queue
@@ -577,12 +596,12 @@ class TelemetryState:
                 f'imu[{board_idx}].gyro_z':      round(sample['gyro_z'], 2),
             })
 
-    def apply_sdu_frame(self, can_id: int, data: list[int]) -> None:
+    def apply_sdu_frame(self, can_id: int, data: list[int], log_timestamp: float = None) -> None:
         """Apply a decoded SDU/TSPMU frame to the state."""
         decoded = decode_sdu_frame(can_id, data)
         if decoded is None or decoded.board_index >= 4:
             return
-        now = time.time()
+        now = log_timestamp if log_timestamp is not None else time.time()
 
         if decoded.board_type == BOARD_TYPE_SDU:
             board = self.sdu[decoded.board_index]
@@ -637,10 +656,11 @@ class TelemetryState:
         overrides['ts'] = ts
         self._high_rate_queue.append(overrides)
 
-    def apply_tshmu_frame(self, samples: list[dict[str, int | float]]) -> None:
+    def apply_tshmu_frame(self, samples: list[dict[str, int | float]], log_timestamp: float = None) -> None:
         """Apply all TSHMU flow samples. Broadcasts the latest; queues all for CSV."""
         if not samples:
             return
+            
         latest = samples[-1]
         board_id = int(latest.get('board_id', 0))
         if board_id < 0 or board_id >= len(self.tshmu):
@@ -655,7 +675,7 @@ class TelemetryState:
         t['error_flags'] = int(latest.get('error_flags', t['error_flags']))
         t['base_timestamp'] = int(latest.get('base_timestamp', t['base_timestamp']))
         
-        now = time.time()
+        now = log_timestamp if log_timestamp is not None else time.time()
         n = len(samples)
         for i, s in enumerate(samples):
             self.push_high_rate_row(now - (n - 1 - i) * 0.001, {
@@ -664,7 +684,7 @@ class TelemetryState:
                 f'tshmu[{board_id}].jitter_us': s['jitter_us'],
             })
 
-    def apply_tshmu_temp_frame(self, blocks: list[dict[str, int | float]]) -> None:
+    def apply_tshmu_temp_frame(self, blocks: list[dict[str, int | float]], log_timestamp: float = None) -> None:
         """Queue all TSHMU temp blocks for CSV logging."""
         if not blocks:
             return
@@ -682,7 +702,7 @@ class TelemetryState:
         t['temp6'] = float(latest.get('temp6', t['temp6']))
         t['temp_jitter_ms'] = int(latest.get('jitter_ms', t['temp_jitter_ms']))
         
-        now = time.time()
+        now = log_timestamp if log_timestamp is not None else time.time()
         n = len(blocks)
         for i, b in enumerate(blocks):
             self.push_high_rate_row(now - (n - 1 - i) * 0.001, {
