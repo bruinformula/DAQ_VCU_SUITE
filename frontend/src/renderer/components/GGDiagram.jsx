@@ -10,10 +10,17 @@ const DIAGRAM_SIZE = 360;
 const CENTER = DIAGRAM_SIZE / 2;
 const RADIUS = 150;
 
+// NOTE: X and Y are swapped at the source (the IMU's .ax column actually carries
+// the lateral channel and .ay carries the longitudinal channel). The mapping
+// below compensates: sensorOptions.ax (the field used as longitudinal/Y-of-GG)
+// points at the column that actually contains longitudinal data, etc.
+
+// Note from Krishay: This is bc the SMU is designed so that the x and y are swapped on
+// the board
 const sensorOptions = [
-  { id: 0, label: 'COG IMU', ax: 'imu[0].ax', ay: 'imu[0].ay', color: '#00e5ff' },
-  { id: 1, label: 'Front IMU', ax: 'imu[1].ax', ay: 'imu[1].ay', color: '#00ff7f' },
-  { id: 2, label: 'Rear IMU', ax: 'imu[2].ax', ay: 'imu[2].ay', color: '#ff2a4d' },
+  { id: 0, label: 'COG IMU', ax: 'imu[0].ay', ay: 'imu[0].ax', color: '#00e5ff' },
+  { id: 1, label: 'Front IMU', ax: 'imu[1].ay', ay: 'imu[1].ax', color: '#00ff7f' },
+  { id: 2, label: 'Rear IMU', ax: 'imu[2].ay', ay: 'imu[2].ax', color: '#ff2a4d' },
 ];
 
 export default function GGDiagram({ samples = [], availableSignalIds = [] }) {
@@ -44,19 +51,20 @@ export default function GGDiagram({ samples = [], availableSignalIds = [] }) {
     if (!selectedSensor) return [];
     const timestamps = normalizeSampleTimestamps(samples);
 
-    const axKey = selectedSensor.id === 0 && !samples.some(s => s[selectedSensor.ax] !== undefined) && samples.some(s => s['imu.ax'] !== undefined) ? 'imu.ax' : selectedSensor.ax;
-    const ayKey = selectedSensor.id === 0 && !samples.some(s => s[selectedSensor.ay] !== undefined) && samples.some(s => s['imu.ay'] !== undefined) ? 'imu.ay' : selectedSensor.ay;
+    // Same X/Y source swap applies to the legacy single-IMU fallback columns.
+    const axKey = selectedSensor.id === 0 && !samples.some(s => s[selectedSensor.ax] !== undefined) && samples.some(s => s['imu.ay'] !== undefined) ? 'imu.ay' : selectedSensor.ax;
+    const ayKey = selectedSensor.id === 0 && !samples.some(s => s[selectedSensor.ay] !== undefined) && samples.some(s => s['imu.ax'] !== undefined) ? 'imu.ax' : selectedSensor.ay;
 
     return samples.map((sample, index) => {
       let ax = parseFloat(sample[axKey]);
       let ay = parseFloat(sample[ayKey]);
-      
+
       const toG = (val) => Math.abs(val) > 4.0 ? val / 9.80665 : val;
-      
+
       if (isNaN(ax) || isNaN(ay)) {
         return null;
       }
-      
+
       ax = toG(ax);
       ay = toG(ay);
 

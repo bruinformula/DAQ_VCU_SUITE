@@ -245,7 +245,7 @@ export default function ImuMotion({ data, boardDropouts, startTs }) {
     const toG = (val) => {
       return Math.abs(val) > 4.0 ? val / 9.80665 : val;
     };
-    
+
     const gX = toG(ay); // lateral
     const gY = toG(ax); // longitudinal
     const gMag = Math.sqrt(gX * gX + gY * gY);
