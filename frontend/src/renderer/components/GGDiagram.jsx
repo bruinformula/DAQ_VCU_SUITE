@@ -1,26 +1,19 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   clampPlayback,
-  formatPlaybackSeconds,
-  formatPlaybackTimestamp,
-  normalizeSampleTimestamps,
 } from '../utils/logPlaybackUtils';
 
 const DIAGRAM_SIZE = 360;
 const CENTER = DIAGRAM_SIZE / 2;
 const RADIUS = 150;
 
-// NOTE: X and Y are swapped at the source (the IMU's .ax column actually carries
-// the lateral channel and .ay carries the longitudinal channel). The mapping
-// below compensates: sensorOptions.ax (the field used as longitudinal/Y-of-GG)
-// points at the column that actually contains longitudinal data, etc.
-
-// Note from Krishay: This is bc the SMU is designed so that the x and y are swapped on
-// the board
+// Hardware correction mapping happens right here once. 
+// According to hardware specs, the board's .ax column actually holds Lateral data, 
+// and the .ay column holds Longitudinal data. 
 const sensorOptions = [
-  { id: 0, label: 'COG IMU', ax: 'imu[0].ay', ay: 'imu[0].ax', color: '#00e5ff' },
-  { id: 1, label: 'Front IMU', ax: 'imu[1].ay', ay: 'imu[1].ax', color: '#00ff7f' },
-  { id: 2, label: 'Rear IMU', ax: 'imu[2].ay', ay: 'imu[2].ax', color: '#ff2a4d' },
+  { id: 0, label: 'COG IMU', latKey: 'imu[0].ax', longKey: 'imu[0].ay', color: '#00e5ff' },
+  { id: 1, label: 'Front IMU', latKey: 'imu[1].ax', longKey: 'imu[1].ay', color: '#00ff7f' },
+  { id: 2, label: 'Rear IMU', latKey: 'imu[2].ax', longKey: 'imu[2].ay', color: '#ff2a4d' },
 ];
 
 export default function GGDiagram({ samples = [], availableSignalIds = [] }) {
@@ -31,10 +24,10 @@ export default function GGDiagram({ samples = [], availableSignalIds = [] }) {
   const availableSensors = useMemo(() => (
     sensorOptions.filter((sensor) => {
       if (sensor.id === 0) {
-        return (availableSignalIds.includes(sensor.ax) && availableSignalIds.includes(sensor.ay)) ||
+        return (availableSignalIds.includes(sensor.latKey) && availableSignalIds.includes(sensor.longKey)) ||
                (availableSignalIds.includes('imu.ax') && availableSignalIds.includes('imu.ay'));
       }
-      return availableSignalIds.includes(sensor.ax) && availableSignalIds.includes(sensor.ay);
+      return availableSignalIds.includes(sensor.latKey) && availableSignalIds.includes(sensor.longKey);
     })
   ), [availableSignalIds]);
 
@@ -49,49 +42,53 @@ export default function GGDiagram({ samples = [], availableSignalIds = [] }) {
 
   const trace = useMemo(() => {
     if (!selectedSensor) return [];
-    const timestamps = normalizeSampleTimestamps(samples);
 
-    // Same X/Y source swap applies to the legacy single-IMU fallback columns.
-    const axKey = selectedSensor.id === 0 && !samples.some(s => s[selectedSensor.ax] !== undefined) && samples.some(s => s['imu.ay'] !== undefined) ? 'imu.ay' : selectedSensor.ax;
-    const ayKey = selectedSensor.id === 0 && !samples.some(s => s[selectedSensor.ay] !== undefined) && samples.some(s => s['imu.ax'] !== undefined) ? 'imu.ax' : selectedSensor.ay;
+    // Map fallback legacy single-IMU parameters for ID 0 if required
+    let latKey = selectedSensor.latKey;
+    let longKey = selectedSensor.longKey;
+
+    if (selectedSensor.id === 0) {
+      if (!samples.some(s => s[latKey] !== undefined) && samples.some(s => s['imu.ax'] !== undefined)) {
+        latKey = 'imu.ax';
+      }
+      if (!samples.some(s => s[longKey] !== undefined) && samples.some(s => s['imu.ay'] !== undefined)) {
+        longKey = 'imu.ay';
+      }
+    }
 
     return samples.map((sample, index) => {
-      let ax = parseFloat(sample[axKey]);
-      let ay = parseFloat(sample[ayKey]);
+      const latVal = parseFloat(sample[latKey]);
+      const longVal = parseFloat(sample[longKey]);
 
-      const toG = (val) => Math.abs(val) > 4.0 ? val / 9.80665 : val;
-
-      if (isNaN(ax) || isNaN(ay)) {
+      if (isNaN(latVal) || isNaN(longVal)) {
         return null;
       }
 
-      ax = toG(ax);
-      ay = toG(ay);
-
+      // Standard G-G diagram layout: 
+      // X = Lateral (horizontal), Y = Longitudinal (vertical).
+      // The user-facing checkbox manually swaps layout presentation if desired.
       return {
-        x: swapAxes ? ax : ay,
-        y: swapAxes ? ay : ax,
-        rawAx: ax,
-        rawAy: ay,
-        timestamp: timestamps[index] ?? 0,
+        x: swapAxes ? longVal : latVal,
+        y: swapAxes ? latVal : longVal,
+        lateral: latVal,
+        longitudinal: longVal,
         index,
       };
     }).filter(Boolean);
   }, [samples, selectedSensor, swapAxes]);
 
-  const displayedTrace = trace;
-  const currentPoint = displayedTrace[displayedTrace.length - 1] || null;
-
   const maxes = useMemo(() => {
     let maxLat = 0, minLat = 0, maxLong = 0, minLong = 0;
-    for (const pt of displayedTrace) {
-      if (pt.rawAy > maxLat) maxLat = pt.rawAy;
-      if (pt.rawAy < minLat) minLat = pt.rawAy;
-      if (pt.rawAx > maxLong) maxLong = pt.rawAx;
-      if (pt.rawAx < minLong) minLong = pt.rawAx;
+    for (const pt of trace) {
+      if (pt.lateral > maxLat) maxLat = pt.lateral;
+      if (pt.lateral < minLat) minLat = pt.lateral;
+      if (pt.longitudinal > maxLong) maxLong = pt.longitudinal;
+      if (pt.longitudinal < minLong) minLong = pt.longitudinal;
     }
     return { maxLat, minLat, maxLong, minLong };
-  }, [displayedTrace]);
+  }, [trace]);
+
+  const currentPoint = trace[trace.length - 1] || null;
 
   return (
     <section className="glass-panel animated-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -123,7 +120,7 @@ export default function GGDiagram({ samples = [], availableSignalIds = [] }) {
               onChange={(event) => setSwapAxes(event.target.checked)}
               style={{ marginRight: '0.25rem' }}
             />
-            <span>Swap Lat / Long</span>
+            <span>Swap Lat / Long Display</span>
           </label>
           <select
             className="select-input"
@@ -152,23 +149,24 @@ export default function GGDiagram({ samples = [], availableSignalIds = [] }) {
                   <circle cx={CENTER} cy={CENTER} r={RADIUS * 0.5} fill="none" stroke="rgba(255,255,255,0.06)" strokeDasharray="3 3" />
                   <line x1={CENTER} y1={CENTER - RADIUS} x2={CENTER} y2={CENTER + RADIUS} stroke="rgba(255,255,255,0.08)" strokeWidth="1" />
                   <line x1={CENTER - RADIUS} y1={CENTER} x2={CENTER + RADIUS} y2={CENTER} stroke="rgba(255,255,255,0.08)" strokeWidth="1" />
+                  
+                  {/* Correctly synchronized plot labels */}
                   <text x={CENTER} y={24} textAnchor="middle" fill="var(--text-secondary)" fontSize="9" fontWeight="600">
-                    {swapAxes ? '+Ay (Lat)' : '+Ax (Long)'}
+                    {swapAxes ? '+Lat Accel' : '+Long Accel'}
                   </text>
                   <text x={CENTER} y={DIAGRAM_SIZE - 12} textAnchor="middle" fill="var(--text-secondary)" fontSize="9" fontWeight="600">
-                    {swapAxes ? '-Ay (Lat)' : '-Ax (Long)'}
+                    {swapAxes ? '-Lat Accel' : '-Long Accel'}
                   </text>
                   <text x={12} y={CENTER + 3} textAnchor="start" fill="var(--text-secondary)" fontSize="9" fontWeight="600">
-                    {swapAxes ? '-Ax (Long)' : '-Ay (Lat)'}
+                    {swapAxes ? '-Long Accel' : '-Lat Accel'}
                   </text>
                   <text x={DIAGRAM_SIZE - 12} y={CENTER + 3} textAnchor="end" fill="var(--text-secondary)" fontSize="9" fontWeight="600">
-                    {swapAxes ? '+Ax (Long)' : '+Ay (Lat)'}
+                    {swapAxes ? '+Long Accel' : '+Lat Accel'}
                   </text>
 
-                  {displayedTrace.map((point) => {
+                  {trace.map((point) => {
                     const cx = CENTER + clampPlayback(point.x, -2.5, 2.5) * (RADIUS / 2);
                     const cy = CENTER - clampPlayback(point.y, -2.5, 2.5) * (RADIUS / 2);
-
                     return (
                       <circle
                         key={point.index}
@@ -201,9 +199,9 @@ export default function GGDiagram({ samples = [], availableSignalIds = [] }) {
                   <text x="44" y="28" fill="var(--text-secondary)" fontSize="9" fontWeight="600">
                     {viewMode === 'lat' ? 'Lateral Accel (G)' : 'Longitudinal Accel (G)'}
                   </text>
-                  {displayedTrace.map((point, index) => {
-                    const cx = 38 + ((index / Math.max(displayedTrace.length - 1, 1)) * 294);
-                    const val = viewMode === 'lat' ? point.rawAy : point.rawAx;
+                  {trace.map((point, index) => {
+                    const cx = 38 + ((index / Math.max(trace.length - 1, 1)) * 294);
+                    const val = viewMode === 'lat' ? point.lateral : point.longitudinal;
                     const cy = 180 - (clampPlayback(val, -2.5, 2.5) * 55);
                     return (
                       <circle
@@ -228,15 +226,15 @@ export default function GGDiagram({ samples = [], availableSignalIds = [] }) {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                       <span className="text-slate-400">Lat Accel:</span>
-                      <strong style={{ color: selectedSensor?.color }}>{currentPoint.rawAy.toFixed(2)} G</strong>
+                      <strong style={{ color: selectedSensor?.color }}>{currentPoint.lateral.toFixed(2)} G</strong>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                       <span className="text-slate-400">Long Accel:</span>
-                      <strong style={{ color: selectedSensor?.color }}>{currentPoint.rawAx.toFixed(2)} G</strong>
+                      <strong style={{ color: selectedSensor?.color }}>{currentPoint.longitudinal.toFixed(2)} G</strong>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                       <span className="text-slate-400">Combined:</span>
-                      <strong style={{ color: '#fff' }}>{Math.sqrt(currentPoint.rawAx**2 + currentPoint.rawAy**2).toFixed(2)} G</strong>
+                      <strong style={{ color: '#fff' }}>{Math.sqrt(currentPoint.lateral**2 + currentPoint.longitudinal**2).toFixed(2)} G</strong>
                     </div>
                   </div>
                 ) : (

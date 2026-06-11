@@ -17,7 +17,6 @@ export default function ImuMotion({ data, boardDropouts, startTs }) {
     return valid.filter((_, idx) => idx % step === 0);
   }, [data]);
 
-
   // Chart configuration helpers
   const getChartOptions = (yTitle, xTitle = 'Time (s)') => ({
     responsive: true,
@@ -88,22 +87,22 @@ export default function ImuMotion({ data, boardDropouts, startTs }) {
   // Dropout highlighter plugin
   const imuPlugin = useMemo(() => createDropoutPlugin(boardDropouts?.imu, startTs), [boardDropouts, startTs]);
 
-  // 1. Primary IMU G-forces
+  // 1. Primary IMU G-forces (Corrected hardware axis mapping alignment)
   const gForceChartData = useMemo(() => {
     return {
       datasets: [
         {
-          label: 'Longitudinal Gs (ax)',
+          label: 'Lateral Gs (ax)',
           data: parseLinearData('imu.ax', 1.0 / 9.80665),
-          borderColor: '#ef4444', // Red
+          borderColor: '#3b82f6', // Blue
           borderWidth: 1.5,
           pointRadius: 0,
           tension: 0,
         },
         {
-          label: 'Lateral Gs (ay)',
+          label: 'Longitudinal Gs (ay)',
           data: parseLinearData('imu.ay', 1.0 / 9.80665),
-          borderColor: '#3b82f6', // Blue
+          borderColor: '#ef4444', // Red
           borderWidth: 1.5,
           pointRadius: 0,
           tension: 0,
@@ -121,29 +120,29 @@ export default function ImuMotion({ data, boardDropouts, startTs }) {
     };
   }, [processedData, startTs]);
 
-  // 2. Longitudinal G comparison across 3 sensors (twist/pitch analysis)
-  const axComparisonChartData = useMemo(() => {
+  // 2. Longitudinal G comparison across 3 sensors (Corrected to map ay)
+  const longComparisonChartData = useMemo(() => {
     return {
       datasets: [
         {
-          label: 'Front/GPS IMU (ax)',
-          data: parseLinearData('imu[0].ax', 1.0 / 9.80665), // scaled to Gs
+          label: 'Front/GPS IMU (ay)',
+          data: parseLinearData('imu[0].ay', 1.0 / 9.80665), // scaled to Gs
           borderColor: '#f97316', // Orange
           borderWidth: 1.5,
           pointRadius: 0,
           tension: 0,
         },
         {
-          label: 'Mid IMU (ax)',
-          data: parseLinearData('imu[1].ax'), // already in Gs
+          label: 'Mid IMU (ay)',
+          data: parseLinearData('imu[1].ay'), // already in Gs
           borderColor: '#06b6d4', // Cyan
           borderWidth: 1.5,
           pointRadius: 0,
           tension: 0,
         },
         {
-          label: 'Rear IMU (ax)',
-          data: parseLinearData('imu[2].ax'), // already in Gs
+          label: 'Rear IMU (ay)',
+          data: parseLinearData('imu[2].ay'), // already in Gs
           borderColor: '#8b5cf6', // Purple
           borderWidth: 1.5,
           pointRadius: 0,
@@ -153,29 +152,29 @@ export default function ImuMotion({ data, boardDropouts, startTs }) {
     };
   }, [processedData, startTs]);
 
-  // 3. Lateral G comparison across 3 sensors (chassis yaw/flex analysis)
-  const ayComparisonChartData = useMemo(() => {
+  // 3. Lateral G comparison across 3 sensors (Corrected to map ax)
+  const latComparisonChartData = useMemo(() => {
     return {
       datasets: [
         {
-          label: 'Front/GPS IMU (ay)',
-          data: parseLinearData('imu[0].ay', 1.0 / 9.80665), // scaled to Gs
+          label: 'Front/GPS IMU (ax)',
+          data: parseLinearData('imu[0].ax', 1.0 / 9.80665), // scaled to Gs
           borderColor: '#f97316',
           borderWidth: 1.5,
           pointRadius: 0,
           tension: 0,
         },
         {
-          label: 'Mid IMU (ay)',
-          data: parseLinearData('imu[1].ay'), // already in Gs
+          label: 'Mid IMU (ax)',
+          data: parseLinearData('imu[1].ax'), // already in Gs
           borderColor: '#06b6d4',
           borderWidth: 1.5,
           pointRadius: 0,
           tension: 0,
         },
         {
-          label: 'Rear IMU (ay)',
-          data: parseLinearData('imu[2].ay'), // already in Gs
+          label: 'Rear IMU (ax)',
+          data: parseLinearData('imu[2].ax'), // already in Gs
           borderColor: '#8b5cf6',
           borderWidth: 1.5,
           pointRadius: 0,
@@ -246,8 +245,9 @@ export default function ImuMotion({ data, boardDropouts, startTs }) {
       return Math.abs(val) > 4.0 ? val / 9.80665 : val;
     };
 
-    const gX = toG(ay); // lateral
-    const gY = toG(ax); // longitudinal
+    // Corrected to reflect that physical hardware maps ax -> Lateral (X) and ay -> Longitudinal (Y)
+    const gX = toG(ax); // lateral
+    const gY = toG(ay); // longitudinal
     const gMag = Math.sqrt(gX * gX + gY * gY);
     const cx = 50 + Math.max(-1, Math.min(1, gX / maxG)) * 50;
     const cy = 50 - Math.max(-1, Math.min(1, gY / maxG)) * 50;
@@ -282,7 +282,7 @@ export default function ImuMotion({ data, boardDropouts, startTs }) {
               
               {/* Direction Labels */}
               <text x="50" y="9" textAnchor="middle" fill="var(--text-secondary)" fillOpacity="0.75" fontWeight="600" fontSize="7" fontFamily="var(--font-sans)">F</text>
-              <text x="50" y="97" text-Anchor="middle" fill="var(--text-secondary)" fillOpacity="0.75" fontWeight="600" fontSize="7" fontFamily="var(--font-sans)">B</text>
+              <text x="50" y="97" textAnchor="middle" fill="var(--text-secondary)" fillOpacity="0.75" fontWeight="600" fontSize="7" fontFamily="var(--font-sans)">B</text>
               <text x="7" y="52.5" textAnchor="start" fill="var(--text-secondary)" fillOpacity="0.75" fontWeight="600" fontSize="7" fontFamily="var(--font-sans)">L</text>
               <text x="93" y="52.5" textAnchor="end" fill="var(--text-secondary)" fillOpacity="0.75" fontWeight="600" fontSize="7" fontFamily="var(--font-sans)">R</text>
 
@@ -376,7 +376,7 @@ export default function ImuMotion({ data, boardDropouts, startTs }) {
               title="Longitudinal Gs Comparison" 
               description="Compares acceleration forces across the Front (GPS), Mid, and Rear IMUs to study chassis flex and pitching dynamics." 
               options={getChartOptions('Acceleration (G)')} 
-              data={axComparisonChartData} 
+              data={longComparisonChartData} 
               plugins={[imuPlugin]} 
             />
           </div>
@@ -393,7 +393,7 @@ export default function ImuMotion({ data, boardDropouts, startTs }) {
               title="Lateral Gs Comparison" 
               description="Compares cornering forces across Front, Mid, and Rear sensor locations. Deviations indicate vehicle yaw or frame twisting." 
               options={getChartOptions('Acceleration (G)')} 
-              data={ayComparisonChartData} 
+              data={latComparisonChartData} 
               plugins={[imuPlugin]} 
             />
           </div>
