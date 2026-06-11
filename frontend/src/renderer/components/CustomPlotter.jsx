@@ -19,8 +19,14 @@ export default function CustomPlotter({ data, boardDropouts, startTs = 0 }) {
 
   const processedData = useMemo(() => {
     if (!data || data.length === 0) return [];
-    const valid = data.filter(row => !isNaN(parseFloat(row.ts)));
     const targetPoints = 4000;
+    // Live data has well-formed ts on every row, so a full filter pass just
+    // allocates a copy. Walk once to confirm validity and short-circuit if so.
+    let allValid = true;
+    for (let i = 0; i < data.length; i++) {
+      if (isNaN(parseFloat(data[i].ts))) { allValid = false; break; }
+    }
+    const valid = allValid ? data : data.filter(row => !isNaN(parseFloat(row.ts)));
     if (valid.length <= targetPoints) return valid;
     const step = Math.ceil(valid.length / targetPoints);
     return valid.filter((_, idx) => idx % step === 0);

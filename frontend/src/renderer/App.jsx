@@ -213,8 +213,12 @@ export default function App() {
     return isNaN(firstRowTs) ? 0 : firstRowTs;
   }, [activeDataset]);
 
-  // Scan dataset for time gaps (dropouts) where dt > 0.45 seconds
+  // Scan dataset for time gaps (dropouts) where dt > 0.45 seconds.
+  // Skipped in live mode: the 10 Hz binning loop fills the ring buffer every
+  // 100 ms, so dt > 0.45 s never triggers — running the scan just churns the
+  // GC walking 2000 rows per publish.
   const dropouts = useMemo(() => {
+    if (isLiveMode) return [];
     if (activeDataset.length < 2) return [];
     const gaps = [];
     const threshold = 0.45;
@@ -240,17 +244,21 @@ export default function App() {
       }
     }
     return gaps;
-  }, [activeDataset]);
+  }, [activeDataset, isLiveMode]);
 
-  // Precompute board-specific dropouts
+  // Precompute board-specific dropouts.
+  // Skipped in live mode for the same reason as above — 11 boards × 2000 rows
+  // = 22k iterations per publish is wasted work when the live sliding window
+  // never has true gaps.
   const boardDropouts = useMemo(() => {
+    if (isLiveMode) return {};
     const boards = ['gps', 'inverter', 'imu', 'sdu0', 'sdu1', 'sdu2', 'sdu3', 'tspmu0', 'tspmu1', 'tshmu', 'bms'];
     const result = {};
     boards.forEach(b => {
       result[b] = detectBoardDropouts(activeDataset, b, dropouts, startTs);
     });
     return result;
-  }, [activeDataset, dropouts, startTs]);
+  }, [activeDataset, dropouts, startTs, isLiveMode]);
 
   // Drag and Drop handlers
   const handleDrag = useCallback((e) => {

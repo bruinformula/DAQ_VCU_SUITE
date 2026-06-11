@@ -451,8 +451,15 @@ export function TelemetryProvider({ children }) {
   // Refs for tracking live state
   const latestStateRef = useRef({ ...initialSignalState });
   const liveBufferRef = useRef([]);
+  // Ring-buffer write index used once liveBufferRef hits LIVE_BUFFER_CAP. Avoids
+  // O(n) Array.shift() per tick and lets us overwrite the oldest slot in O(1).
+  const liveBufferHeadRef = useRef(0);
   const liveStartMsRef = useRef(0);
   const liveIntervalRef = useRef(null);
+  // Counts bin ticks since last activeDataset publish. We bin at 10 Hz but only
+  // flip the React state reference at 2 Hz so downstream charts/memos don't
+  // re-compute (and re-allocate thousands of {x,y} objects) every 100 ms.
+  const livePublishCounterRef = useRef(0);
 
   // Tracks whether the USB/serial transport is currently connected.
   // Used by WiFi-side stop logic to avoid killing the binning loop while USB is still streaming.
@@ -467,6 +474,43 @@ export function TelemetryProvider({ children }) {
   const manualDisconnectRef = useRef(false);
   const lastMessageAtRef = useRef(0);
   const targetIpRef = useRef('');
+
+  const LIVE_BUFFER_CAP = 2000;
+  const PUBLISH_EVERY_N_BINS = 5; // 10 Hz bin × 5 = 2 Hz publish
+
+  // Push a new row into the live ring buffer in O(1).
+  const ringPushLive = (row) => {
+    const buf = liveBufferRef.current;
+    if (buf.length < LIVE_BUFFER_CAP) {
+      buf.push(row);
+      // Once we first hit cap, head sits at 0 ready to overwrite the oldest slot.
+      liveBufferHeadRef.current = buf.length % LIVE_BUFFER_CAP;
+    } else {
+      buf[liveBufferHeadRef.current] = row;
+      liveBufferHeadRef.current = (liveBufferHeadRef.current + 1) % LIVE_BUFFER_CAP;
+    }
+  };
+
+  // Materialize the ring buffer in chronological order. Allocates exactly one
+  // array per call — callers should invoke this only when publishing to React.
+  const ringSnapshotLive = () => {
+    const buf = liveBufferRef.current;
+    const head = liveBufferHeadRef.current;
+    if (buf.length < LIVE_BUFFER_CAP || head === 0) {
+      return buf.slice();
+    }
+    const out = new Array(buf.length);
+    for (let i = 0; i < buf.length; i++) {
+      out[i] = buf[(head + i) % buf.length];
+    }
+    return out;
+  };
+
+  const resetLiveBuffer = () => {
+    liveBufferRef.current = [];
+    liveBufferHeadRef.current = 0;
+    livePublishCounterRef.current = 0;
+  };
 
   const reverseRenameKey = (key) => {
     if (key === 'ts' || key === 'id_dec' || key === 'data_hex') return key;
@@ -529,7 +573,7 @@ export function TelemetryProvider({ children }) {
         setIsReplaying(false);
         setPlaybackTime(0);
         setPlaybackDataset([]);
-        liveBufferRef.current = [];
+        resetLiveBuffer();
         playbackRef.current = { lastRealTime: 0, lastIndexSent: 0, lastBinTime: 0, time: 0 };
         
         if (finalData.length > 1) {
@@ -884,16 +928,19 @@ export function TelemetryProvider({ children }) {
         // (e.g. WiFi was already streaming — just let USB data merge in).
         if (!liveIntervalRef.current) {
           liveStartMsRef.current = Date.now();
-          liveBufferRef.current = [];
+          resetLiveBuffer();
           latestStateRef.current = { ...initialSignalState };
 
           liveIntervalRef.current = setInterval(() => {
             const nowMs = Date.now();
             const tsSeconds = (nowMs - liveStartMsRef.current) / 1000;
-            liveBufferRef.current.push({ ts: tsSeconds.toFixed(3), ...latestStateRef.current });
-            if (liveBufferRef.current.length > 2000) liveBufferRef.current.shift();
+            ringPushLive({ ts: tsSeconds.toFixed(3), ...latestStateRef.current });
             setLatestValues({ ...latestStateRef.current });
-            setActiveDataset([...liveBufferRef.current]);
+            livePublishCounterRef.current += 1;
+            if (livePublishCounterRef.current >= PUBLISH_EVERY_N_BINS) {
+              livePublishCounterRef.current = 0;
+              setActiveDataset(ringSnapshotLive());
+            }
           }, 100);
         }
       } else {
@@ -961,16 +1008,19 @@ export function TelemetryProvider({ children }) {
       // (e.g. USB was already streaming — just let WiFi CAN data merge in).
       if (!liveIntervalRef.current) {
         liveStartMsRef.current = Date.now();
-        liveBufferRef.current = [];
+        resetLiveBuffer();
         latestStateRef.current = { ...initialSignalState };
 
         liveIntervalRef.current = setInterval(() => {
           const nowMs = Date.now();
           const tsSeconds = (nowMs - liveStartMsRef.current) / 1000;
-          liveBufferRef.current.push({ ts: tsSeconds.toFixed(3), ...latestStateRef.current });
-          if (liveBufferRef.current.length > 2000) liveBufferRef.current.shift();
+          ringPushLive({ ts: tsSeconds.toFixed(3), ...latestStateRef.current });
           setLatestValues({ ...latestStateRef.current });
-          setActiveDataset([...liveBufferRef.current]);
+          livePublishCounterRef.current += 1;
+          if (livePublishCounterRef.current >= PUBLISH_EVERY_N_BINS) {
+            livePublishCounterRef.current = 0;
+            setActiveDataset(ringSnapshotLive());
+          }
         }, 100);
       }
     } else {
@@ -1030,14 +1080,14 @@ export function TelemetryProvider({ children }) {
 
   const clearLiveSession = () => {
     window.mduDebug.clearSession();
-    liveBufferRef.current = [];
+    resetLiveBuffer();
     setActiveDataset([]);
     liveStartMsRef.current = Date.now();
   };
 
   const toggleLiveMode = () => {
     setIsLiveMode(true);
-    setActiveDataset([...liveBufferRef.current]);
+    setActiveDataset(ringSnapshotLive());
     setCurrentFilePath('');
   };
 
