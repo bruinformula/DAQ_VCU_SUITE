@@ -159,10 +159,10 @@ export default function GGDiagram({ samples = [], availableSignalIds = [] }) {
                     {swapAxes ? '-Ay (Lat)' : '-Ax (Long)'}
                   </text>
                   <text x={12} y={CENTER + 3} textAnchor="start" fill="var(--text-secondary)" fontSize="9" fontWeight="600">
-                    {swapAxes ? '+Ax (Long)' : '+Ay (Lat)'}
+                    {swapAxes ? '-Ax (Long)' : '-Ay (Lat)'}
                   </text>
                   <text x={DIAGRAM_SIZE - 12} y={CENTER + 3} textAnchor="end" fill="var(--text-secondary)" fontSize="9" fontWeight="600">
-                    {swapAxes ? '-Ax (Long)' : '-Ay (Lat)'}
+                    {swapAxes ? '+Ax (Long)' : '+Ay (Lat)'}
                   </text>
 
                   {displayedTrace.map((point) => {
