@@ -2252,16 +2252,11 @@ async def loop_uart_mirror():
                         can_id, dlc, data = UART_MIRROR_QUEUE.get_nowait()
                     except asyncio.QueueEmpty:
                         break
-                    # Build packet: [0xAA 0x55] [ID_HI ID_LO] [DLC] [DATA...] [XOR]
-                    id_hi = (can_id >> 8) & 0xFF
-                    id_lo = can_id & 0xFF
-                    pkt = bytearray([0xAA, 0x55, id_hi, id_lo, dlc & 0xFF])
-                    pkt.extend(data[:dlc])
-                    chk = 0
-                    for b in pkt[2:]:
-                        chk ^= b
-                    pkt.append(chk)
-                    batch.extend(pkt)
+                    # Build ASCII packet: 0x[ID]:[DATA]\r\n
+                    # e.g., 0xA0:FF00112233\r\n
+                    data_hex = ''.join(f"{b:02X}" for b in data[:dlc])
+                    ascii_str = f"0x{can_id:03X}:{data_hex}\r\n"
+                    batch.extend(ascii_str.encode('ascii'))
                     drained += 1
 
                 if batch:
