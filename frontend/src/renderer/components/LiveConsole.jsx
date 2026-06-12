@@ -4,7 +4,7 @@ import { Search, Play, Pause, Trash2, Filter, ShieldAlert, Activity, Sliders, Ra
 import LiveDashboard from './LiveDashboard';
 
 export default function LiveConsole() {
-  const { connectionState, diagnostics, rawCanLog, clearRawCanLog, wifiState } = useTelemetry();
+  const { connectionState, diagnostics, rawCanLog, appendRawCanLog, clearRawCanLog, wifiState } = useTelemetry();
   const [logs, setLogs] = useState([]);
   const [search, setSearch] = useState('');
   const [boardFilter, setBoardFilter] = useState('all');
@@ -86,6 +86,22 @@ export default function LiveConsole() {
         }
         return next;
       });
+
+      // Also forward valid CAN frames to the CAN Bus console
+      const canEntries = [];
+      for (const f of newFrames) {
+        if (f.frame && f.ok) {
+          canEntries.push({
+            ts: Date.now() / 1000,
+            id: parseInt(f.frame.identifierHex, 16),
+            dlc: f.frame.dataLength,
+            d: f.frame.dataHex || '',
+          });
+        }
+      }
+      if (canEntries.length > 0) {
+        appendRawCanLog(canEntries);
+      }
     });
 
     const unsubWifiSnapshot = window.mduDebug.onWifiSnapshot((snapshot) => {

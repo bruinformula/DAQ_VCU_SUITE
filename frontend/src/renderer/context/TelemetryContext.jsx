@@ -1266,6 +1266,19 @@ export function TelemetryProvider({ children }) {
 
         // Raw CAN console
         rawCanLog,
+        appendRawCanLog: (newEntries) => {
+          const buf = rawCanLogRef.current;
+          buf.push(...newEntries);
+          if (buf.length > 50000) {
+            buf.splice(0, buf.length - 25000);
+          }
+          if (!flushTimeoutRef.current) {
+            flushTimeoutRef.current = setTimeout(() => {
+              setRawCanLog([...rawCanLogRef.current]);
+              flushTimeoutRef.current = null;
+            }, 250);
+          }
+        },
         clearRawCanLog: () => { rawCanLogRef.current = []; setRawCanLog([]); },
       }}
     >
