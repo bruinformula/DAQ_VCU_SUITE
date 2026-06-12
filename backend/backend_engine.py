@@ -2222,7 +2222,7 @@ async def loop_uart_mirror():
         UART_MIRROR_BAUD  — default 57600
     """
     uart_port = os.environ.get('UART_MIRROR_PORT', '/dev/ttyAMA4')
-    uart_baud = int(os.environ.get('UART_MIRROR_BAUD', '115200'))
+    uart_baud = int(os.environ.get('UART_MIRROR_BAUD', '57600'))
     print(f"[UART MIRROR] Starting on {uart_port} @ {uart_baud}")
 
     try:
