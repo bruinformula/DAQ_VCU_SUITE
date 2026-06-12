@@ -773,6 +773,10 @@ class DeviceMonitor extends EventEmitter {
             const slcan = parseBinaryFrame(frameBuffer);
             
             if (!slcan.ok) {
+               // Too noisy to log every single byte skip when aligning sync, so only log if it had the 0xAA 0x55 sync but failed validation
+               if (slcan.reason !== 'too-short' && slcan.reason !== 'invalid-sync') {
+                 console.log('[DEBUG] Rejected binary frame:', slcan.reason, 'Length:', frameLength, 'Buffer:', frameBuffer.toString('hex'));
+               }
                rxRead += 1;
                continue;
             }

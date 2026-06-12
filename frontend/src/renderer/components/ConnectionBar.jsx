@@ -39,7 +39,7 @@ export default function ConnectionBar() {
   } = useTelemetry();
 
   const [selectedPort, setSelectedPort] = useState('');
-  const [baudRate, setBaudRate] = useState('115200');
+  const [baudRate, setBaudRate] = useState('57600');
   const [ipInput, setIpInput] = useState(targetIp || '');
   const [remoteLogName, setRemoteLogName] = useState('');
   const [selectedWifiLog, setSelectedWifiLog] = useState('');
