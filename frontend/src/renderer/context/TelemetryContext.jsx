@@ -451,6 +451,7 @@ export function TelemetryProvider({ children }) {
   // Raw CAN frame log for the CAN Bus console
   const [rawCanLog, setRawCanLog] = useState([]);
   const rawCanLogRef = useRef([]);
+  const flushTimeoutRef = useRef(null);
 
   // Refs for tracking live state
   const latestStateRef = useRef({ ...initialSignalState });
