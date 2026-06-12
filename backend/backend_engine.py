@@ -942,6 +942,7 @@ CAN_RAW_BUFFER: deque[_CAN_RAW_TYPE] = deque(maxlen=50_000)   # pre-trigger roll
 CAN_RAW_LIVE_QUEUE: deque[_CAN_RAW_TYPE] = deque()  # drained during active logging without silent drops
 active_connections: list[WebSocket] = []
 RAW_FRAME_QUEUE: asyncio.Queue = asyncio.Queue(maxsize=100000)  # raw CAN frames for WS mirroring
+UART_MIRROR_QUEUE: asyncio.Queue = asyncio.Queue(maxsize=100000)  # raw CAN frames for UART GPIO mirror
 
 BACKGROUND_TASKS = set()
 
@@ -1564,11 +1565,18 @@ async def loop_socketcan():
 
 
 def _enqueue_raw_frame(can_id: int, dlc: int, data_hex: str) -> None:
-    """Push a raw CAN frame into the WebSocket broadcast queue (non-blocking, drops if full)."""
+    """Push a raw CAN frame into the WebSocket broadcast queue AND the UART mirror queue (non-blocking, drops if full)."""
+    frame_dict = {'ts': round(time.time(), 4), 'id': can_id, 'dlc': dlc, 'd': data_hex}
     try:
-        RAW_FRAME_QUEUE.put_nowait({'ts': round(time.time(), 4), 'id': can_id, 'dlc': dlc, 'd': data_hex})
+        RAW_FRAME_QUEUE.put_nowait(frame_dict)
     except asyncio.QueueFull:
         pass  # slow clients — drop rather than block
+    # Also enqueue for UART GPIO mirror
+    try:
+        data_bytes = bytes.fromhex(data_hex) if data_hex else b''
+        UART_MIRROR_QUEUE.put_nowait((can_id, dlc, data_bytes))
+    except (asyncio.QueueFull, ValueError):
+        pass
 
 
 def _process_frame(frame: SlcanFrame) -> None:
@@ -2197,6 +2205,86 @@ async def loop_serial_broadcaster():
 
 
 # ---------------------------------------------------------------------------
+# LOOP F: UART CAN Mirror on GPIO 14/15  (/dev/ttyAMA0)
+# ---------------------------------------------------------------------------
+
+async def loop_uart_mirror():
+    """
+    Mirror every raw CAN frame received (from SocketCAN, USB ACM binary, and
+    MDU SLCAN sources) out the Pi's hardware UART on GPIO 14 (TX) / GPIO 15 (RX).
+
+    Each frame is sent as a compact binary packet:
+        [0xAA] [0x55] [ID_HI] [ID_LO] [DLC] [DATA...] [CHKSUM]
+    where CHKSUM = XOR of ID_HI..DATA[-1].
+
+    Configure with env vars:
+        UART_MIRROR_PORT  — default /dev/ttyAMA0
+        UART_MIRROR_BAUD  — default 921600
+    """
+    uart_port = os.environ.get('UART_MIRROR_PORT', '/dev/ttyAMA0')
+    uart_baud = int(os.environ.get('UART_MIRROR_BAUD', '921600'))
+    print(f"[UART MIRROR] Starting on {uart_port} @ {uart_baud}")
+
+    try:
+        import serial_asyncio
+    except ImportError:
+        print("[UART MIRROR] serial_asyncio not available. Skipping UART mirror.")
+        print("[UART MIRROR] Install with: pip install pyserial-asyncio")
+        return
+
+    while True:
+        try:
+            _, writer = await serial_asyncio.open_serial_connection(
+                url=uart_port, baudrate=uart_baud
+            )
+            print(f"[UART MIRROR] Connected to {uart_port}")
+
+            last_stats = time.time()
+            frames_out = 0
+            bytes_out = 0
+
+            while True:
+                # Drain up to 500 frames per iteration to stay responsive
+                batch = bytearray()
+                drained = 0
+                while drained < 500:
+                    try:
+                        can_id, dlc, data = UART_MIRROR_QUEUE.get_nowait()
+                    except asyncio.QueueEmpty:
+                        break
+                    # Build packet: [0xAA 0x55] [ID_HI ID_LO] [DLC] [DATA...] [XOR]
+                    id_hi = (can_id >> 8) & 0xFF
+                    id_lo = can_id & 0xFF
+                    pkt = bytearray([0xAA, 0x55, id_hi, id_lo, dlc & 0xFF])
+                    pkt.extend(data[:dlc])
+                    chk = 0
+                    for b in pkt[2:]:
+                        chk ^= b
+                    pkt.append(chk)
+                    batch.extend(pkt)
+                    drained += 1
+
+                if batch:
+                    writer.write(bytes(batch))
+                    await writer.drain()
+                    frames_out += drained
+                    bytes_out += len(batch)
+                else:
+                    await asyncio.sleep(0.002)  # ~500 Hz poll when idle
+
+                now = time.time()
+                if now - last_stats >= 5.0:
+                    print(f"[UART MIRROR] {frames_out} frames, {bytes_out} bytes in last 5s")
+                    frames_out = 0
+                    bytes_out = 0
+                    last_stats = now
+
+        except Exception as e:
+            print(f"[UART MIRROR] {uart_port} error: {e}. Retrying in 2s...")
+            await asyncio.sleep(2)
+
+
+# ---------------------------------------------------------------------------
 # FastAPI Application
 # ---------------------------------------------------------------------------
 
@@ -2221,6 +2309,7 @@ async def lifespan(app: FastAPI):
     start_background_task(loop_csv_logger())
     start_background_task(loop_ws_broadcaster())
     start_background_task(loop_serial_broadcaster())
+    start_background_task(loop_uart_mirror())
 
     print(f"[SYSTEM] All loops started. Mock={MOCK_MODE}")
     yield
