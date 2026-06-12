@@ -1,18 +1,77 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useTelemetry } from '../context/TelemetryContext';
-import { Search, Play, Pause, Trash2, Filter, ShieldAlert, Activity, Sliders } from 'lucide-react';
+import { Search, Play, Pause, Trash2, Filter, ShieldAlert, Activity, Sliders, Radio } from 'lucide-react';
 import LiveDashboard from './LiveDashboard';
 
 export default function LiveConsole() {
-  const { connectionState, diagnostics } = useTelemetry();
+  const { connectionState, diagnostics, rawCanLog, clearRawCanLog, wifiState } = useTelemetry();
   const [logs, setLogs] = useState([]);
   const [search, setSearch] = useState('');
   const [boardFilter, setBoardFilter] = useState('all');
   const [typeFilter, setTypeFilter] = useState('all');
   const [isPaused, setIsPaused] = useState(false);
   const logEndRef = useRef(null);
+  const canLogEndRef = useRef(null);
 
-  const [activeView, setActiveView] = useState('dashboard'); // 'console' or 'dashboard'
+  const [activeView, setActiveView] = useState('dashboard'); // 'console', 'dashboard', or 'canbus'
+
+  // CAN Bus console state
+  const [canSearch, setCanSearch] = useState('');
+  const [canIdFilter, setCanIdFilter] = useState('');
+  const [isCanPaused, setIsCanPaused] = useState(false);
+  const [pausedCanLog, setPausedCanLog] = useState([]);
+
+  // Freeze/unfreeze CAN log when paused
+  useEffect(() => {
+    if (isCanPaused) {
+      setPausedCanLog([...rawCanLog]);
+    }
+  }, [isCanPaused]);
+
+  const displayedCanLog = isCanPaused ? pausedCanLog : rawCanLog;
+
+  // Filter CAN log entries
+  const filteredCanLog = useMemo(() => {
+    return displayedCanLog.filter((entry) => {
+      // CAN ID filter (hex, e.g. "0x041" or "41" or decimal)
+      if (canIdFilter) {
+        const filterVal = canIdFilter.trim().toLowerCase();
+        const idHex = `0x${entry.id.toString(16).toUpperCase().padStart(3, '0')}`;
+        const idDec = entry.id.toString();
+        if (
+          !idHex.toLowerCase().includes(filterVal) &&
+          !idDec.includes(filterVal)
+        ) {
+          return false;
+        }
+      }
+      // Free text search on the full line
+      if (canSearch) {
+        const line = formatCanLine(entry);
+        if (!line.toLowerCase().includes(canSearch.toLowerCase())) return false;
+      }
+      return true;
+    });
+  }, [displayedCanLog, canIdFilter, canSearch]);
+
+  // Auto-scroll CAN log
+  useEffect(() => {
+    if (!isCanPaused && canLogEndRef.current) {
+      canLogEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [filteredCanLog, isCanPaused]);
+
+  // Unique CAN IDs seen (for the sidebar)
+  const seenCanIds = useMemo(() => {
+    const counts = {};
+    for (const entry of displayedCanLog) {
+      const key = entry.id;
+      if (!counts[key]) counts[key] = { id: key, count: 0, lastTs: 0 };
+      counts[key].count++;
+      counts[key].lastTs = entry.ts;
+    }
+    return Object.values(counts).sort((a, b) => a.id - b.id);
+  }, [displayedCanLog]);
 
   // Monitor incoming frames in real-time (batched)
   useEffect(() => {
@@ -103,6 +162,22 @@ export default function LiveConsole() {
           <span>Live Dashboard</span>
         </button>
         <button
+          onClick={() => setActiveView('canbus')}
+          className={`nav-button ${activeView === 'canbus' ? 'active' : ''}`}
+          style={{ padding: '0.35rem 0.75rem', fontSize: '0.8rem' }}
+        >
+          <Radio size={14} />
+          <span>CAN Bus</span>
+          {wifiState === 'connected' && (
+            <span style={{
+              width: 6, height: 6, borderRadius: '50%',
+              backgroundColor: '#22c55e',
+              display: 'inline-block', marginLeft: 4,
+              boxShadow: '0 0 6px #22c55e',
+            }} />
+          )}
+        </button>
+        <button
           onClick={() => setActiveView('console')}
           className={`nav-button ${activeView === 'console' ? 'active' : ''}`}
           style={{ padding: '0.35rem 0.75rem', fontSize: '0.8rem' }}
@@ -114,6 +189,167 @@ export default function LiveConsole() {
 
       {activeView === 'dashboard' ? (
         <LiveDashboard />
+      ) : activeView === 'canbus' ? (
+        /* ============ CAN BUS CONSOLE ============ */
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: '1rem', height: '100%', minHeight: 0 }}>
+          {/* CAN message stream */}
+          <div className="glass-panel" style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: '1rem', borderRadius: '12px' }}>
+            {/* Toolbar */}
+            <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '0.75rem', alignItems: 'center' }}>
+              <div style={{ position: 'relative', flex: 1, minWidth: '120px' }}>
+                <Search size={14} style={{ position: 'absolute', left: '8px', top: '10px', color: 'var(--text-secondary)' }} />
+                <input
+                  type="text"
+                  placeholder="Search..."
+                  value={canSearch}
+                  onChange={(e) => setCanSearch(e.target.value)}
+                  className="text-input"
+                  style={{ paddingLeft: '28px', width: '100%' }}
+                />
+              </div>
+
+              <div style={{ position: 'relative', minWidth: '100px' }}>
+                <Filter size={14} style={{ position: 'absolute', left: '8px', top: '10px', color: 'var(--text-secondary)' }} />
+                <input
+                  type="text"
+                  placeholder="CAN ID..."
+                  value={canIdFilter}
+                  onChange={(e) => setCanIdFilter(e.target.value)}
+                  className="text-input"
+                  style={{ paddingLeft: '28px', width: '100%', maxWidth: '120px' }}
+                />
+              </div>
+
+              <button
+                className="button"
+                onClick={() => setIsCanPaused(!isCanPaused)}
+                style={{ padding: '0.35rem 0.75rem', display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.8rem' }}
+              >
+                {isCanPaused ? <Play size={12} fill="currentColor" /> : <Pause size={12} />}
+                <span>{isCanPaused ? 'Resume' : 'Pause'}</span>
+              </button>
+
+              <button
+                className="button"
+                onClick={() => { clearRawCanLog(); setPausedCanLog([]); }}
+                style={{ padding: '0.35rem 0.75rem', display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.8rem' }}
+              >
+                <Trash2 size={12} />
+                <span>Clear</span>
+              </button>
+
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginLeft: 'auto' }}>
+                {filteredCanLog.length} msgs
+              </span>
+            </div>
+
+            {/* Terminal output */}
+            <div style={{
+              flex: 1,
+              backgroundColor: '#090d16',
+              fontFamily: '"JetBrains Mono", Consolas, Monaco, "Courier New", monospace',
+              fontSize: '0.75rem',
+              padding: '0.5rem 0.75rem',
+              borderRadius: '8px',
+              overflowY: 'auto',
+              border: '1px solid var(--border-color)',
+              lineHeight: '1.5',
+            }}>
+              {/* Header */}
+              <div style={{
+                color: '#64748b',
+                borderBottom: '1px solid rgba(100,116,139,0.2)',
+                paddingBottom: '4px',
+                marginBottom: '4px',
+                fontWeight: 'bold',
+                whiteSpace: 'pre',
+                userSelect: 'none',
+              }}>
+                {'  TIMESTAMP       ID       DLC  DATA'}
+              </div>
+
+              {filteredCanLog.length === 0 ? (
+                <div style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: '2rem' }}>
+                  {wifiState === 'connected'
+                    ? 'Waiting for CAN frames...'
+                    : 'Connect to the Pi via WiFi to see CAN traffic.'}
+                </div>
+              ) : (
+                filteredCanLog.map((entry, i) => {
+                  const idVal = entry.id;
+                  // Color-code by CAN ID ranges
+                  let color = '#e2e8f0'; // default white/grey
+                  if (idVal >= 0x080 && idVal <= 0x0BF) color = '#a78bfa'; // SDU purple
+                  else if (idVal >= 0x041 && idVal <= 0x042) color = '#34d399'; // GPS green
+                  else if (idVal >= 0x4F5 && idVal <= 0x4FA) color = '#fbbf24'; // IMU yellow
+                  else if (idVal >= 0x0A0 && idVal <= 0x0AC) color = '#f87171'; // Inverter red
+                  else if (idVal >= 0x6B0 && idVal <= 0x6B4) color = '#38bdf8'; // BMS cyan
+                  else if (idVal >= 0x100 && idVal <= 0x1FF) color = '#fb923c'; // VCU/Fusebox orange
+
+                  return (
+                    <div key={i} style={{ color, whiteSpace: 'pre', marginBottom: '1px' }}>
+                      {formatCanLine(entry)}
+                    </div>
+                  );
+                })
+              )}
+              <div ref={canLogEndRef} />
+            </div>
+          </div>
+
+          {/* CAN ID sidebar */}
+          <div className="glass-panel" style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: '1rem', borderRadius: '12px' }}>
+            <h3 style={{ margin: '0 0 0.75rem 0', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Radio size={16} style={{ color: '#38bdf8' }} />
+              <span>Active CAN IDs</span>
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginLeft: 'auto' }}>
+                {seenCanIds.length}
+              </span>
+            </h3>
+
+            <div style={{ flex: 1, overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: '6px' }}>
+              <table className="spreadsheet-table" style={{ width: '100%', fontSize: '0.75rem' }}>
+                <thead>
+                  <tr>
+                    <th style={{ textAlign: 'left', padding: '0.4rem 0.5rem' }}>ID</th>
+                    <th style={{ textAlign: 'right', padding: '0.4rem 0.5rem' }}>Count</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {seenCanIds.length === 0 ? (
+                    <tr>
+                      <td colSpan="2" style={{ textAlign: 'center', padding: '1rem', color: 'var(--text-secondary)' }}>
+                        No CAN frames yet
+                      </td>
+                    </tr>
+                  ) : (
+                    seenCanIds.map((item) => (
+                      <tr
+                        key={item.id}
+                        style={{ cursor: 'pointer' }}
+                        onClick={() => setCanIdFilter(`0x${item.id.toString(16).toUpperCase().padStart(3, '0')}`)}
+                      >
+                        <td style={{
+                          padding: '0.35rem 0.5rem',
+                          fontFamily: '"JetBrains Mono", Consolas, monospace',
+                          fontWeight: 'bold',
+                        }}>
+                          0x{item.id.toString(16).toUpperCase().padStart(3, '0')}
+                          <span style={{ color: 'var(--text-secondary)', fontWeight: 'normal', marginLeft: '0.5rem' }}>
+                            ({item.id})
+                          </span>
+                        </td>
+                        <td style={{ padding: '0.35rem 0.5rem', textAlign: 'right', color: 'var(--text-secondary)' }}>
+                          {item.count}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 350px', gap: '1rem', height: '100%', minHeight: 0 }}>
       {/* Console panel */}
@@ -270,4 +506,24 @@ export default function LiveConsole() {
       )}
     </div>
   );
+}
+
+/**
+ * Format a raw CAN log entry as a single fixed-width line.
+ * Example:  1718160000.1234  0x041  64  01 02 03 AA BB ...
+ */
+function formatCanLine(entry) {
+  const ts = typeof entry.ts === 'number' ? entry.ts.toFixed(4) : String(entry.ts);
+  const idHex = `0x${entry.id.toString(16).toUpperCase().padStart(3, '0')}`;
+  const dlcStr = String(entry.dlc).padStart(2, ' ');
+
+  // Format data as spaced hex bytes
+  const raw = entry.d || '';
+  const dataBytes = [];
+  for (let i = 0; i < raw.length; i += 2) {
+    dataBytes.push(raw.substring(i, i + 2));
+  }
+  const dataStr = dataBytes.join(' ');
+
+  return `  ${ts.padEnd(16)} ${idHex.padEnd(8)} ${dlcStr}   ${dataStr}`;
 }
