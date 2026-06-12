@@ -189,6 +189,7 @@ export default function ConnectionBar() {
           style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem', width: '90px' }}
         >
           <option value="9600">9600</option>
+          <option value="57600">57600</option>
           <option value="115200">115200</option>
           <option value="230400">230400</option>
           <option value="460800">460800</option>
