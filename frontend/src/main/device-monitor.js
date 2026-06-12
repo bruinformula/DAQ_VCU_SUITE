@@ -719,8 +719,14 @@ class DeviceMonitor extends EventEmitter {
         let rxRead = 0;
         let rxWrite = 0;
 
+        let lastLogTime = 0;
         serialPort.on('data', (chunk) => {
           const now = Date.now();
+          if (now - lastLogTime > 1000) {
+            console.log('[DEBUG RAW STREAM] ' + chunk.toString('hex').slice(0, 100));
+            lastLogTime = now;
+          }
+
           this.stats.recordChunk(chunk.length, now);
           
           if (rxWrite + chunk.length > rxBuffer.length) {
