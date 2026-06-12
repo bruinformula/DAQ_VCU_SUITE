@@ -774,59 +774,18 @@ function registerIpcHandlers() {
     const ext = path.extname(filePath).toLowerCase();
     
     if (ext === '.csv') {
-      // Read header line
-      const inStreamHeader = fs.createReadStream(filePath);
-      const rlHeader = readline.createInterface({ input: inStreamHeader });
-      let firstLine = '';
-      for await (const line of rlHeader) {
-        firstLine = line;
-        break;
-      }
-      rlHeader.close();
-      inStreamHeader.destroy();
-      
-      if (!firstLine) return [];
-      
-      const headers = firstLine.split(',').map(h => h.trim().replace(/^["']|["']$/g, ''));
-      
-      // Get file size for progress reporting
-      const stats = await fs.promises.stat(filePath);
-      const fileSize = stats.size;
-      
-      // Stream all rows — no decimation, direct CSV read
-      const rows = [];
-      const inStream = fs.createReadStream(filePath);
-      const rl = readline.createInterface({ input: inStream });
-      let isFirst = true;
-      let bytesRead = 0;
-      let rowCount = 0;
-      
-      for await (const line of rl) {
-        bytesRead += Buffer.byteLength(line, 'utf8') + 1;
-        
-        if (isFirst) { isFirst = false; continue; }
-        if (!line.trim()) continue;
-        
-        const parts = line.split(',');
-        const rowObj = {};
-        for (let i = 0; i < headers.length; i++) {
-          rowObj[headers[i]] = parts[i];
-        }
-        rows.push(rowObj);
-        rowCount++;
-        
-        // Report progress every 50000 rows
-        if (rowCount % 50000 === 0 && eventSender) {
-          const percent = Math.min(100, (bytesRead / fileSize) * 100);
-          eventSender.send('parse-progress', percent);
-        }
-      }
-      
+      console.log(`Reading CSV file: ${filePath}`);
+      const content = await fs.promises.readFile(filePath, 'utf8');
+      console.log(`CSV file read into memory, parsing with Papa.parse...`);
+      const parsed = Papa.parse(content, {
+        header: true,
+        skipEmptyLines: true
+      });
       if (eventSender) {
         eventSender.send('parse-progress', 100);
       }
-      console.log(`CSV loaded: ${rowCount} rows, ${headers.length} columns`);
-      return rows;
+      console.log(`CSV loaded: ${parsed.data.length} rows`);
+      return parsed.data;
     }
     
     if (ext === '.jsonl') {
@@ -867,6 +826,7 @@ function registerIpcHandlers() {
 
   ipcMain.handle('file:parse-telemetry', async (_event, filePath) => {
     try {
+      console.log('file:parse-telemetry path:', filePath);
       return await parseTelemetryFile(filePath, _event.sender);
     } catch (e) {
       console.error('Error parsing telemetry file:', e);
