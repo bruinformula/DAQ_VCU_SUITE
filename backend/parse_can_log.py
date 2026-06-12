@@ -230,4 +230,13 @@ if __name__ == "__main__":
         print("Usage: python parse_can_log.py <input.csv> <output.csv>")
         sys.exit(1)
         
-    parse_can_log(sys.argv[1], sys.argv[2])
+    try:
+        parse_can_log(sys.argv[1], sys.argv[2])
+    except TimeoutError as e:
+        print(f"\n[ERROR] File read timed out: {e}", file=sys.stderr)
+        print("[TIP] This usually happens if the input file is stored in iCloud Drive (or another cloud sync folder) and has been offloaded from local storage. Please right-click the file in Finder and select 'Download Now', or copy it to a local folder outside iCloud (such as inside the DAQ_VCU_SUITE workspace) and try again.", file=sys.stderr)
+        sys.exit(1)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)

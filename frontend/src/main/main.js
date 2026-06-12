@@ -770,10 +770,11 @@ function registerIpcHandlers() {
     return decimated;
   }
 
-  async function parseTelemetryFile(filePath) {
+  async function parseTelemetryFile(filePath, eventSender) {
     const ext = path.extname(filePath).toLowerCase();
     
     if (ext === '.csv') {
+      // Read header line
       const inStreamHeader = fs.createReadStream(filePath);
       const rlHeader = readline.createInterface({ input: inStreamHeader });
       let firstLine = '';
@@ -788,151 +789,44 @@ function registerIpcHandlers() {
       
       const headers = firstLine.split(',').map(h => h.trim().replace(/^["']|["']$/g, ''));
       
-      const isRawCanCsv = headers.includes('id_hex') && headers.includes('data_hex');
-      const rawColName = headers.find(h => h === 'raw' || h === 'message');
-      
-      if (isRawCanCsv) {
-        const timeColIdx = headers.indexOf('ts');
-        const idDecColIdx = headers.indexOf('id_dec');
-        const idHexColIdx = headers.indexOf('id_hex');
-        const dataHexColIdx = headers.indexOf('data_hex');
-        const dlcColIdx = headers.indexOf('dlc');
-        
-        const parser = new StreamTelemetryParser();
-        
-        const inStream = fs.createReadStream(filePath);
-        const rl = readline.createInterface({ input: inStream });
-        let isFirst = true;
-        
-        for await (const line of rl) {
-          if (isFirst) {
-            isFirst = false;
-            continue;
-          }
-          if (!line.trim()) continue;
-          
-          const parts = line.split(',');
-          const idHexStr = parts[idHexColIdx];
-          const dataHexStr = parts[dataHexColIdx];
-          if (!idHexStr || !dataHexStr) continue;
-          
-          let tsMs = parseFloat(parts[timeColIdx]);
-          if (isNaN(tsMs)) {
-            tsMs = Date.now();
-          } else {
-            tsMs = tsMs * 1000;
-          }
-          
-          const identifier = idDecColIdx !== -1 ? parseInt(parts[idDecColIdx], 10) : parseInt(idHexStr, 16);
-          const identifierHex = idHexStr.replace(/^0x/i, '').toUpperCase();
-          const idText = '0x' + identifierHex;
-          const idType = identifier > 0x7FF ? 'extended' : 'standard';
-          
-          const dlcVal = dlcColIdx !== -1 ? parseInt(parts[dlcColIdx], 10) : dataHexStr.length / 2;
-          
-          const dataBytes = [];
-          for (let i = 0; i < dataHexStr.length; i += 2) {
-            dataBytes.push(parseInt(dataHexStr.substring(i, i + 2), 16));
-          }
-          
-          const slcan = {
-            ok: true,
-            identifier,
-            identifierHex,
-            idText,
-            idType,
-            dataLength: dlcVal,
-            dataHex: dataHexStr,
-            dataBytes,
-          };
-          
-          const rawLine = `t${identifierHex.padStart(3, '0')}${dlcVal}${dataHexStr}`;
-          const parsedFrame = parseSlcanToBoard(slcan, rawLine);
-          
-          if (parsedFrame.ok) {
-            parser.addFrame(tsMs, parsedFrame.board, parsedFrame.identifier, parsedFrame.dataBytes);
-          }
-        }
-        return decimateRows(parser.finish());
-      }
-      
-      if (rawColName) {
-        const rawColIdx = headers.indexOf(rawColName);
-        const timeColIdx = headers.findIndex(h => h === 'ts' || h.toLowerCase().includes('time'));
-        
-        const parser = new StreamTelemetryParser();
-        
-        const inStream = fs.createReadStream(filePath);
-        const rl = readline.createInterface({ input: inStream });
-        let isFirst = true;
-        
-        for await (const line of rl) {
-          if (isFirst) {
-            isFirst = false;
-            continue;
-          }
-          if (!line.trim()) continue;
-          
-          const parts = line.split(',');
-          const rawStr = parts[rawColIdx];
-          if (!rawStr) continue;
-          
-          let tsMs = timeColIdx !== -1 ? parseFloat(parts[timeColIdx]) : NaN;
-          if (isNaN(tsMs)) {
-            tsMs = Date.now();
-          } else if (tsMs < 1000000000) {
-            tsMs = tsMs * 1000;
-          }
-          
-          const parsedFrame = parseMduLine(rawStr);
-          if (parsedFrame.ok) {
-            parser.addFrame(tsMs, parsedFrame.board, parsedFrame.identifier, parsedFrame.dataBytes);
-          }
-        }
-        return decimateRows(parser.finish());
-      }
-      
-      // Pre-parsed telemetry CSV file - stream-based parsing with on-the-fly decimation
+      // Get file size for progress reporting
       const stats = await fs.promises.stat(filePath);
       const fileSize = stats.size;
       
-      const inStream = fs.createReadStream(filePath);
-      const isRawCan = filePath.toUpperCase().includes('_CAN.CSV') || (headers.includes('id_dec') && headers.includes('data_hex'));
-      const rl = readline.createInterface({ input: inStream });
-      let step = 1;
-      let lineIndex = 0;
-      let isFirst = true;
+      // Stream all rows — no decimation, direct CSV read
       const rows = [];
+      const inStream = fs.createReadStream(filePath);
+      const rl = readline.createInterface({ input: inStream });
+      let isFirst = true;
+      let bytesRead = 0;
+      let rowCount = 0;
       
       for await (const line of rl) {
-        if (isFirst) {
-          isFirst = false;
-          continue;
-        }
+        bytesRead += Buffer.byteLength(line, 'utf8') + 1;
+        
+        if (isFirst) { isFirst = false; continue; }
         if (!line.trim()) continue;
         
-        if (lineIndex === 0 && !isRawCan) {
-          const avgLineSize = line.length + 1;
-          const estimatedLines = Math.ceil(fileSize / avgLineSize);
-          step = Math.ceil(estimatedLines / 20000);
-          if (step < 1) step = 1;
-          if (step > 1) {
-            console.log(`Pre-parsed CSV: estimated lines: ${estimatedLines}, step: ${step} (maxRows: 20000)`);
-          }
+        const parts = line.split(',');
+        const rowObj = {};
+        for (let i = 0; i < headers.length; i++) {
+          rowObj[headers[i]] = parts[i];
         }
+        rows.push(rowObj);
+        rowCount++;
         
-        if (isRawCan || lineIndex % step === 0) {
-          const parts = line.split(',');
-          const rowObj = {};
-          for (let i = 0; i < headers.length; i++) {
-            rowObj[headers[i]] = parts[i];
-          }
-          rows.push(rowObj);
+        // Report progress every 50000 rows
+        if (rowCount % 50000 === 0 && eventSender) {
+          const percent = Math.min(100, (bytesRead / fileSize) * 100);
+          eventSender.send('parse-progress', percent);
         }
-        lineIndex++;
       }
       
-      return isRawCan ? rows : decimateRows(rows);
+      if (eventSender) {
+        eventSender.send('parse-progress', 100);
+      }
+      console.log(`CSV loaded: ${rowCount} rows, ${headers.length} columns`);
+      return rows;
     }
     
     if (ext === '.jsonl') {
@@ -973,7 +867,7 @@ function registerIpcHandlers() {
 
   ipcMain.handle('file:parse-telemetry', async (_event, filePath) => {
     try {
-      return await parseTelemetryFile(filePath);
+      return await parseTelemetryFile(filePath, _event.sender);
     } catch (e) {
       console.error('Error parsing telemetry file:', e);
       throw e;

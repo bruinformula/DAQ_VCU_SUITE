@@ -265,6 +265,7 @@ class TelemetryState:
         self.fusebox_all: dict[str, float | int | bool] = {}
         self.fusebox_meta = {'state': 0.0, 'power': 0.0, 'ambient_temp': 0.0}
         self.can_activity: dict[int, dict[str, float | int]] = {}
+        self._dbc: dict[str, float] = {}
 
         # Frame counters
         self.frames_parsed: int = 0
@@ -916,6 +917,8 @@ class TelemetryState:
         flatten_value_map(payload.get('sdu', {}), 'sdu', flat)
         flatten_value_map(payload.get('tspmu', {}), 'tspmu', flat)
         flatten_value_map(payload.get('tshmu', {}), 'tshmu', flat)
+        for k, v in self._dbc.items():
+            flat[k] = v
         flat['ts'] = payload['ts']
         return flat
 

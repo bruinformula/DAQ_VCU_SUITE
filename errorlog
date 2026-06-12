@@ -1,0 +1,50 @@
+Jun 09 23:00:55 raspberrypi systemd[1]: Started telemetry-hub.service - Bruin Racing "Pit Sync" Telemetry Hub.
+Jun 09 23:00:56 raspberrypi python[1101]: INFO:     Started server process [1101]
+Jun 09 23:00:56 raspberrypi python[1101]: INFO:     Waiting for application startup.
+Jun 09 23:00:56 raspberrypi python[1101]: INFO:     Application startup complete.
+Jun 09 23:00:56 raspberrypi python[1101]: INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+Jun 09 23:01:34 raspberrypi python[1101]: INFO:     10.42.0.54:59955 - "WebSocket /ws" [accepted]
+Jun 09 23:01:34 raspberrypi python[1101]: INFO:     connection open
+Jun 09 23:01:34 raspberrypi python[1101]: [SYSTEM] All loops started. Mock=False
+Jun 09 23:01:34 raspberrypi python[1101]: [SYSTEM] MDU Serial Group Started.
+Jun 09 23:01:34 raspberrypi python[1101]: [SERIAL] No MDU serial ports detected; skipping SLCAN serial group.
+Jun 09 23:01:34 raspberrypi python[1101]: [BINARY SERIAL] Starting readers for: /dev/ttyACM0, /dev/ttyACM1, /dev/ttyACM2, /dev/ttyACM3
+Jun 09 23:01:34 raspberrypi python[1101]: [SYSTEM] SocketCAN Loop Started on can1 using python-can.
+Jun 09 23:01:34 raspberrypi python[1101]: [SYSTEM] CSV Logger Loop Started.
+Jun 09 23:01:34 raspberrypi python[1101]: [LOGGER] is_logging=True, LOG_DIR=/home/daqpi/telemetry_logs
+Jun 09 23:01:34 raspberrypi python[1101]: [LOGGER] find_usb_drive() => None
+Jun 09 23:01:34 raspberrypi python[1101]: [LOGGER] choose_log_directory() => /home/daqpi/telemetry_logs
+Jun 09 23:01:34 raspberrypi python[1101]: [LOGGER] TRIGGERED! Flushing buffer to /home/daqpi/telemetry_logs/BFR_2026-06-09_11-00-56_PM.csv
+Jun 09 23:01:34 raspberrypi python[1101]: [LOGGER] Raw CAN log: /home/daqpi/telemetry_logs/BFR_2026-06-09_11-00-56_PM_CAN.csv
+Jun 09 23:01:34 raspberrypi python[1101]: [SYSTEM] WS Broadcaster Loop Started (raw CAN mirror batch mode).
+Jun 09 23:01:34 raspberrypi python[1101]: [SYSTEM] No OUT_SERIAL_PORT specified. Serial Broadcaster disabled.
+Jun 09 23:01:34 raspberrypi python[1101]: [BINARY SERIAL] Connected to /dev/ttyACM0
+Jun 09 23:01:34 raspberrypi python[1101]: [BINARY SERIAL] Connected to /dev/ttyACM1
+Jun 09 23:01:34 raspberrypi python[1101]: [BINARY SERIAL] Connected to /dev/ttyACM2
+Jun 09 23:01:34 raspberrypi python[1101]: [BINARY SERIAL] Connected to /dev/ttyACM3
+Jun 09 23:01:34 raspberrypi python[1101]: [LOGGER] Flushed 1 pre-trigger rows.
+Jun 09 23:01:34 raspberrypi python[1101]: [BINARY SERIAL] /dev/ttyACM1: read 120484 bytes, parsed 3484 frames in the last 5s
+Jun 09 23:01:34 raspberrypi python[1101]: [BINARY SERIAL] /dev/ttyACM3: read 46931 bytes, parsed 680 frames in the last 5s
+Jun 09 23:01:34 raspberrypi python[1101]: [BINARY SERIAL] /dev/ttyACM0: read 63858 bytes, parsed 1855 frames in the last 5s
+Jun 09 23:01:34 raspberrypi python[1101]: [BINARY SERIAL] /dev/ttyACM0: read 57518 bytes, parsed 1646 frames in the last 5s
+Jun 09 23:01:34 raspberrypi python[1101]: [BINARY SERIAL] /dev/ttyACM1: read 114152 bytes, parsed 3280 frames in the last 5s
+Jun 09 23:01:34 raspberrypi python[1101]: [BINARY SERIAL] /dev/ttyACM3: read 30705 bytes, parsed 445 frames in the last 5s
+Jun 09 23:01:34 raspberrypi python[1101]: [BINARY SERIAL] /dev/ttyACM1: read 114044 bytes, parsed 3276 frames in the last 5s
+Jun 09 23:01:34 raspberrypi python[1101]: [BINARY SERIAL] /dev/ttyACM0: read 57380 bytes, parsed 1644 frames in the last 5s
+Jun 09 23:01:34 raspberrypi python[1101]: [BINARY SERIAL] /dev/ttyACM3: read 30498 bytes, parsed 442 frames in the last 5s
+Jun 09 23:01:34 raspberrypi python[1101]: [BINARY SERIAL] /dev/ttyACM0: read 57367 bytes, parsed 1643 frames in the last 5s
+Jun 09 23:01:34 raspberrypi python[1101]: [BINARY SERIAL] /dev/ttyACM1: read 114148 bytes, parsed 3284 frames in the last 5s
+Jun 09 23:01:34 raspberrypi python[1101]: [BINARY SERIAL] /dev/ttyACM3: read 30636 bytes, parsed 444 frames in the last 5s
+Jun 09 23:01:34 raspberrypi python[1101]: [BINARY SERIAL] /dev/ttyACM0: read 57436 bytes, parsed 1644 frames in the last 5s
+Jun 09 23:01:34 raspberrypi python[1101]: [BINARY SERIAL] /dev/ttyACM1: read 113919 bytes, parsed 3275 frames in the last 5s
+Jun 09 23:01:34 raspberrypi python[1101]: [BINARY SERIAL] /dev/ttyACM3: read 30774 bytes, parsed 446 frames in the last 5s
+Jun 09 23:01:34 raspberrypi python[1101]: [BINARY SERIAL] /dev/ttyACM0: read 57311 bytes, parsed 1643 frames in the last 5s
+Jun 09 23:01:34 raspberrypi python[1101]: [BINARY SERIAL] /dev/ttyACM1: read 114057 bytes, parsed 3277 frames in the last 5s
+Jun 09 23:01:34 raspberrypi python[1101]: [BINARY SERIAL] /dev/ttyACM3: read 30498 bytes, parsed 442 frames in the last 5s
+Jun 09 23:01:34 raspberrypi python[1101]: [BINARY SERIAL] /dev/ttyACM0: read 57492 bytes, parsed 1644 frames in the last 5s
+Jun 09 23:01:34 raspberrypi python[1101]: [BINARY SERIAL] /dev/ttyACM1: read 113850 bytes, parsed 3274 frames in the last 5s
+Jun 09 23:01:34 raspberrypi python[1101]: [BINARY SERIAL] /dev/ttyACM3: read 30705 bytes, parsed 445 frames in the last 5s
+Jun 09 23:01:34 raspberrypi python[1101]: [NETWORK] Client connected. Active: 1
+Jun 09 23:01:34 raspberrypi python[1101]: INFO:     10.42.0.54:59956 - "GET /api/status HTTP/1.1" 200 OK
+Jun 09 23:01:34 raspberrypi python[1101]: INFO:     10.42.0.54:59957 - "GET /api/logs HTTP/1.1" 200 OK
+Jun 09 23:01:34 raspberrypi python[1101]: INFO:     10.42.0.54:59956 - "GET /api/logs HTTP/1.1" 200 OK
