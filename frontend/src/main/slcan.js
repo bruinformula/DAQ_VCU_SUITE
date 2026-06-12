@@ -86,20 +86,30 @@ function parseSlcanFrame(rawLine) {
 }
 
 function parseBinaryFrame(buffer) {
-  if (buffer.length < 5) return { ok: false, reason: 'too-short' };
-  if (buffer[0] !== 0xAA) return { ok: false, reason: 'invalid-sync' };
-  if (buffer[buffer.length - 1] !== 0x55) return { ok: false, reason: 'invalid-end' };
+  if (buffer.length < 6) return { ok: false, reason: 'too-short' };
+  if (buffer[0] !== 0xAA || buffer[1] !== 0x55) return { ok: false, reason: 'invalid-sync' };
 
-  const identifier = buffer.readUInt16LE(1);
-  const dataLength = buffer[3];
+  const idHi = buffer[2];
+  const idLo = buffer[3];
+  const identifier = (idHi << 8) | idLo;
+  const dataLength = buffer[4];
   
-  if (buffer.length !== 5 + dataLength) {
+  if (buffer.length !== 6 + dataLength) {
     return { ok: false, reason: 'length-mismatch' };
+  }
+
+  // Checksum: XOR of everything from ID_HI to last data byte
+  let chk = 0;
+  for (let i = 2; i < 5 + dataLength; i++) {
+    chk ^= buffer[i];
+  }
+  if (chk !== buffer[5 + dataLength]) {
+    return { ok: false, reason: 'invalid-checksum' };
   }
 
   const dataBytes = [];
   for (let i = 0; i < dataLength; i++) {
-    dataBytes.push(buffer[4 + i]);
+    dataBytes.push(buffer[5 + i]);
   }
 
   const identifierHex = identifier.toString(16).toUpperCase().padStart(3, '0');

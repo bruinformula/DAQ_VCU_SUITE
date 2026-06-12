@@ -78,7 +78,7 @@ function normalizePort(port) {
     displayName: port.path,
     usbBacked,
     bluetoothLike,
-    matchesTarget: vendorId === TARGET_VID && productId === TARGET_PID,
+    matchesTarget: (vendorId === TARGET_VID && productId === TARGET_PID) || String(port.path).includes('usbserial'),
     mirrorEligible: usbBacked && !bluetoothLike,
   };
 }
@@ -748,15 +748,22 @@ class DeviceMonitor extends EventEmitter {
               break;
             }
 
+            // Check for the second sync byte (0x55)
+            if (syncIndex + 1 < rxWrite && rxBuffer[syncIndex + 1] !== 0x55) {
+              rxRead = syncIndex + 1; // Skip bad 0xAA
+              continue;
+            }
+
             rxRead = syncIndex;
             const available = rxWrite - rxRead;
 
-            if (available < 5) {
+            // Need at least 6 bytes (0xAA, 0x55, ID_HI, ID_LO, DLC, CHK)
+            if (available < 6) {
               break;
             }
 
-            const dataLength = rxBuffer[rxRead + 3];
-            const frameLength = 5 + dataLength;
+            const dataLength = rxBuffer[rxRead + 4];
+            const frameLength = 6 + dataLength;
 
             if (available < frameLength) {
               break;
