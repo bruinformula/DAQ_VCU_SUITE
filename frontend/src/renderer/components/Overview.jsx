@@ -62,7 +62,9 @@ export default function Overview({ data, dropouts = [], startTs = 0 }) {
 
     // Check which boards seem active (non-zero or non-empty readings)
     const activeBoards = {
-      gps: validRows.some(row => parseFloat(row['gps.lat']) !== 0 && !isNaN(parseFloat(row['gps.lat']))),
+      smu0: validRows.some(row => (parseFloat(row['gps.lat']) !== 0 && !isNaN(parseFloat(row['gps.lat']))) || (parseFloat(row['imu[0].ax']) !== 0 && !isNaN(parseFloat(row['imu[0].ax'])))),
+      smu1: validRows.some(row => parseFloat(row['imu[1].ax']) !== 0 && !isNaN(parseFloat(row['imu[1].ax']))),
+      smu2: validRows.some(row => parseFloat(row['imu[2].ax']) !== 0 && !isNaN(parseFloat(row['imu[2].ax']))),
       sdu0: validRows.some(row => parseFloat(row['sdu[0].brake']) > 0),
       sdu1: validRows.some(row => parseFloat(row['sdu[1].brake']) > 0),
       sdu2: validRows.some(row => parseFloat(row['sdu[2].brake']) > 0),
@@ -244,10 +246,22 @@ export default function Overview({ data, dropouts = [], startTs = 0 }) {
             Verification of active data streams detected within the selected test file.
           </p>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyBetween: 'space-between', padding: '0.75rem', background: 'rgba(0,0,0,0.2)', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
-              <span style={{ fontSize: '0.875rem' }}>GPS (SMU 0)</span>
-              <span className={`corner-label ${stats.activeBoards.gps ? 'corner-fr' : 'corner-fl'}`} style={{ marginLeft: 'auto' }}>
-                {stats.activeBoards.gps ? 'Active' : 'Offline'}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.75rem', background: 'rgba(0,0,0,0.2)', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
+              <span style={{ fontSize: '0.875rem' }}>COG/GPS Front SMU/IMU (SMU 0)</span>
+              <span className={`corner-label ${stats.activeBoards.smu0 ? 'corner-fr' : 'corner-fl'}`} style={{ marginLeft: 'auto' }}>
+                {stats.activeBoards.smu0 ? 'Active' : 'Offline'}
+              </span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.75rem', background: 'rgba(0,0,0,0.2)', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
+              <span style={{ fontSize: '0.875rem' }}>Mid SMU/IMU (SMU 1)</span>
+              <span className={`corner-label ${stats.activeBoards.smu1 ? 'corner-rl' : 'corner-fl'}`} style={{ marginLeft: 'auto' }}>
+                {stats.activeBoards.smu1 ? 'Active' : 'Offline'}
+              </span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.75rem', background: 'rgba(0,0,0,0.2)', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
+              <span style={{ fontSize: '0.875rem' }}>Rear SMU/IMU (SMU 2)</span>
+              <span className={`corner-label ${stats.activeBoards.smu2 ? 'corner-rr' : 'corner-fl'}`} style={{ marginLeft: 'auto' }}>
+                {stats.activeBoards.smu2 ? 'Active' : 'Offline'}
               </span>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', justifyBetween: 'space-between', padding: '0.75rem', background: 'rgba(0,0,0,0.2)', borderRadius: '6px', border: '1px solid var(--border-color)' }}>

@@ -1264,7 +1264,7 @@ function registerIpcHandlers() {
       sdu: { name: 'SDU (Sensor Data Unit)', board_id_var: 'SDU_BOARD_ID', ids: ['FL', 'FR', 'RL', 'RR'], path: path.join(home, 'mk11-sdu') },
       mdu: { name: 'MDU (Master Data Unit)', path: path.join(home, 'mk11-mdu-code') },
       tspmu: { name: 'TSPMU (Tire System Pressure Monitoring Unit)', board_id_var: 'TSPMU_BOARD_ID', ids: ['0', '1'], path: path.join(home, 'mk11-daq-TSPMU-CODE') },
-      smu: { name: 'SMU (Sensor Measurement Unit / IMU)', board_id_var: 'SMU_BOARD_ID', ids: ['GPS', 'Mid IMU', 'Rear IMU'], path: path.join(home, 'mk11-smu') }
+      smu: { name: 'SMU (Sensor Measurement Unit / IMU)', board_id_var: 'SMU_BOARD_ID', ids: ['COG/GPS Front SMU/IMU', 'Mid SMU/IMU', 'Rear SMU/IMU'], path: path.join(home, 'mk11-smu') }
     };
     
     try {

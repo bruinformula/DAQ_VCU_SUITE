@@ -405,7 +405,9 @@ export default function LiveDashboard() {
     { key: '4-1', name: 'TSHMU Flow 1', type: 4, id: 1 },
     { key: '6-0', name: 'TSPMU FL', type: 6, id: 0 },
     { key: '6-1', name: 'TSPMU FR', type: 6, id: 1 },
-    { key: '7-0', name: 'GPS / SMU', type: 7, id: 0 }
+    { key: '7-0', name: 'COG/GPS Front SMU/IMU (SMU 0)', type: 7, id: 0 },
+    { key: '7-1', name: 'Mid SMU/IMU (SMU 1)', type: 7, id: 1 },
+    { key: '7-2', name: 'Rear SMU/IMU (SMU 2)', type: 7, id: 2 }
   ];
 
   const getBoardStatus = (expected) => {
@@ -414,7 +416,11 @@ export default function LiveDashboard() {
     }
     
     const board = diagnostics.boards.find(
-      b => b.boardType === expected.type && b.boardId === expected.id
+      b => {
+        const typeMatch = b.boardType === expected.type ||
+          ((expected.type === 1 || expected.type === 7) && (b.boardType === 1 || b.boardType === 7));
+        return typeMatch && b.boardId === expected.id;
+      }
     );
     
     if (!board) {
@@ -595,7 +601,7 @@ export default function LiveDashboard() {
                     <text x="60" y="11.5" fill="rgba(255,255,255,0.2)" fontSize="6" textAnchor="middle" fontWeight="bold">1.5G</text>
                   </svg>
                   
-                  {/* COG IMU Bubble (Cyan) */}
+                  {/* COG/GPS Front SMU/IMU Bubble (Cyan) */}
                   {hasCogImu && (
                     <div style={{
                       position: 'absolute',
@@ -609,10 +615,10 @@ export default function LiveDashboard() {
                       transition: 'all 0.08s ease-out',
                       border: '1px solid rgba(255,255,255,0.3)',
                       zIndex: 3
-                    }} title="COG IMU" />
+                    }} title="COG/GPS Front SMU/IMU" />
                   )}
 
-                  {/* Front IMU Bubble (Green) */}
+                  {/* Mid SMU/IMU Bubble (Green) */}
                   {hasFrontImu && (
                     <div style={{
                       position: 'absolute',
@@ -626,10 +632,10 @@ export default function LiveDashboard() {
                       transition: 'all 0.08s ease-out',
                       border: '1px solid rgba(255,255,255,0.3)',
                       zIndex: 2
-                    }} title="Front IMU" />
+                    }} title="Mid SMU/IMU" />
                   )}
 
-                  {/* Rear IMU Bubble (Red) */}
+                  {/* Rear SMU/IMU Bubble (Red) */}
                   {hasRearImu && (
                     <div style={{
                       position: 'absolute',
@@ -643,11 +649,11 @@ export default function LiveDashboard() {
                       transition: 'all 0.08s ease-out',
                       border: '1px solid rgba(255,255,255,0.3)',
                       zIndex: 2
-                    }} title="Rear IMU" />
+                    }} title="Rear SMU/IMU" />
                   )}
 
                   <span style={{ position: 'absolute', bottom: '6px', left: '50%', transform: 'translateX(-50%)', fontSize: '0.55rem', color: 'var(--text-secondary)', fontWeight: 600, whiteSpace: 'nowrap' }}>
-                    {Math.sqrt(cogAx*cogAx + cogAy*cogAy).toFixed(2)} G (COG)
+                    {Math.sqrt(cogAx*cogAx + cogAy*cogAy).toFixed(2)} G (COG/GPS Front)
                   </span>
                 </div>
               </div>

@@ -125,12 +125,19 @@ export default function TractiveSystem({ data, boardDropouts, startTs }) {
   // Dropout highlighter plugins
   const tspmu0Dropouts = boardDropouts?.tspmu0 || [];
   const tspmu1Dropouts = boardDropouts?.tspmu1 || [];
+  const tshmu0Dropouts = boardDropouts?.tshmu0 || [];
+  const tshmu1Dropouts = boardDropouts?.tshmu1 || [];
   const bmsDropouts = boardDropouts?.bms || [];
 
   const combinedTspmuPlugin = useMemo(() => {
     const merged = mergeDropouts(tspmu0Dropouts, tspmu1Dropouts);
     return createDropoutPlugin(merged, startTs);
   }, [tspmu0Dropouts, tspmu1Dropouts, startTs]);
+
+  const combinedTshmuPlugin = useMemo(() => {
+    const merged = mergeDropouts(tshmu0Dropouts, tshmu1Dropouts);
+    return createDropoutPlugin(merged, startTs);
+  }, [tshmu0Dropouts, tshmu1Dropouts, startTs]);
 
   const tspmu0Plugin = useMemo(() => createDropoutPlugin(tspmu0Dropouts, startTs), [tspmu0Dropouts, startTs]);
   const tspmu1Plugin = useMemo(() => createDropoutPlugin(tspmu1Dropouts, startTs), [tspmu1Dropouts, startTs]);
@@ -142,13 +149,61 @@ export default function TractiveSystem({ data, boardDropouts, startTs }) {
   const bmsPlugin = useMemo(() => createDropoutPlugin(bmsDropouts, startTs), [bmsDropouts, startTs]);
 
   // Helper to parse a field to continuous linear datasets
-  const parseLinearData = (colName) => {
+  const parseLinearData = (colName, scale = 1.0) => {
     return processedData.map(row => {
       const val = parseFloat(row[colName]);
       const time = parseFloat(row.ts) - startTs;
-      return { x: time, y: isNaN(val) ? null : val };
+      return { x: time, y: isNaN(val) ? null : val * scale };
     });
   };
+
+  // 1.5 TSHMU Cooling flow rate chart data
+  const coolingChartData = useMemo(() => {
+    return {
+      datasets: [
+        {
+          label: 'B0 Flow 1',
+          data: parseLinearData('tshmu[0].flow1'),
+          borderColor: '#3b82f6', // Blue
+          borderWidth: 1.5,
+          pointRadius: 0,
+          tension: 0,
+        },
+        {
+          label: 'B0 Flow 2',
+          data: parseLinearData('tshmu[0].flow2'),
+          borderColor: '#60a5fa', // Light Blue
+          borderWidth: 1.5,
+          pointRadius: 0,
+          tension: 0,
+        },
+        {
+          label: 'B1 Flow 1',
+          data: parseLinearData('tshmu[1].flow1'),
+          borderColor: '#10b981', // Green
+          borderWidth: 1.5,
+          pointRadius: 0,
+          tension: 0,
+        },
+        {
+          label: 'B1 Flow 2',
+          data: parseLinearData('tshmu[1].flow2'),
+          borderColor: '#34d399', // Light Green
+          borderWidth: 1.5,
+          pointRadius: 0,
+          tension: 0,
+        },
+        {
+          label: 'Jitter (x0.1 us)',
+          data: parseLinearData('tshmu[0].jitter_us', 1.0 / 10),
+          borderColor: '#f43f5e', // Rose
+          borderWidth: 1,
+          pointRadius: 0,
+          tension: 0,
+        }
+      ]
+    };
+  }, [processedData, startTs]);
 
   // 1. TSPMU Pressures (Board 0 & 1)
   const pressureChartData = useMemo(() => {
@@ -401,6 +456,35 @@ export default function TractiveSystem({ data, boardDropouts, startTs }) {
                 options={getChartOptions('Temperature (°C)')} 
                 data={tspmuTempChartData} 
                 plugins={[selectedTspmuPlugin]} 
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* SECTION 1.5: TSHMU (HV Tractive System Heat Management Unit) */}
+      <div>
+        <h2 className="section-title" style={{ borderLeftColor: '#3b82f6' }}>
+          TSHMU Coolant Flow Monitor
+        </h2>
+        <p className="text-slate-400" style={{ fontSize: '0.875rem', marginBottom: '1.5rem' }}>
+          Coolant circuit flow rates and communication bus jitter.
+        </p>
+
+        <div className="grid-cols-2">
+          {/* Flow Rates */}
+          <div className="glass-panel" style={{ gridColumn: 'span 2' }}>
+            <h3 className="section-title" style={{ fontSize: '1.15rem' }}>Coolant Flow Rates & Bus Jitter</h3>
+            <p className="text-slate-400" style={{ fontSize: '0.85rem', marginBottom: '1rem' }}>
+              Plots flow rates (L/min) for Board 0/1 and timing jitter (x0.1 us) to diagnose pump/sensor connection health.
+            </p>
+            <div className="chart-container" style={{ height: '350px' }}>
+              <ZoomableLine 
+                title="Coolant Flow Rates & Bus Jitter" 
+                description="Plots flow rates (L/min) for Board 0/1 and timing jitter (x0.1 us) to diagnose pump/sensor connection health." 
+                options={getChartOptions('Flow (L/min) / Jitter')} 
+                data={coolingChartData} 
+                plugins={[combinedTshmuPlugin]} 
               />
             </div>
           </div>

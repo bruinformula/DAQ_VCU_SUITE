@@ -6,9 +6,9 @@ import ZoomableLine from './ZoomableLine';
 // ---------------------------------------------------------------------------
 // IMU mounting orientations (axes given relative to the FRONT of the car):
 //
-//   IMU 0 (COG):   x -> right,  y -> front, z -> up
-//   IMU 1 (Front): x -> left,   y -> rear,  z -> up
-//   IMU 2 (Rear):  x -> left,   y -> up,    z -> front
+//   IMU 0 (COG/GPS Front): x -> right,  y -> front, z -> up
+//   IMU 1 (Mid):           x -> left,   y -> rear,  z -> up
+//   IMU 2 (Rear):          x -> left,   y -> up,    z -> front
 //
 // Car frame convention (matches GGDiagram):
 //   Lateral      = positive RIGHT
@@ -21,8 +21,8 @@ import ZoomableLine from './ZoomableLine';
 // EXCLUDED from all calculations and displays in this component.
 //
 // Units are AUTO-DETECTED per channel (see detectChannelScale) rather than
-// hard-coded, and the COG IMU is additionally cross-calibrated against the
-// Front IMU, which has been verified to read correctly.
+// hard-coded, and the COG/GPS Front SMU/IMU is additionally cross-calibrated against the
+// Mid SMU/IMU, which has been verified to read correctly.
 // ---------------------------------------------------------------------------
 const MS2_TO_G = 1.0 / 9.80665;
 
@@ -42,7 +42,7 @@ function detectChannelScale(rows, key) {
 }
 
 // Least-squares fit of reference = gain * value + offset (same logic as
-// GGDiagram). Used to calibrate the COG IMU against the trusted Front IMU.
+// GGDiagram). Used to calibrate the COG/GPS Front SMU/IMU against the trusted Mid SMU/IMU.
 // Falls back to offset-only when the fit is unreliable, and to identity
 // when there aren't enough overlapping samples.
 function fitCalibration(pairs) {
@@ -161,12 +161,12 @@ export default function ImuMotion({ data, boardDropouts, startTs }) {
     legacyAz: detectChannelScale(processedData, 'imu.az'),
     cogLat: detectChannelScale(processedData, 'imu[0].ax'),
     cogLong: detectChannelScale(processedData, 'imu[0].ay'),
-    frontLat: detectChannelScale(processedData, 'imu[1].ax'),
-    frontLong: detectChannelScale(processedData, 'imu[1].ay'),
+    midLat: detectChannelScale(processedData, 'imu[1].ax'),
+    midLong: detectChannelScale(processedData, 'imu[1].ay'),
   }), [processedData]);
 
-  // Cross-calibration of the COG IMU against the Front IMU (the trusted
-  // reference), in the car frame: fit front = gain * cog + offset per axis.
+  // Cross-calibration of the COG/GPS Front SMU/IMU against the Mid SMU/IMU (the trusted
+  // reference), in the car frame: fit mid = gain * cog + offset per axis.
   const cogCalibration = useMemo(() => {
     const latPairs = [];
     const longPairs = [];
@@ -176,12 +176,12 @@ export default function ImuMotion({ data, boardDropouts, startTs }) {
       const fLat = parseFloat(row['imu[1].ax']);
       const fLong = parseFloat(row['imu[1].ay']);
       if (!isNaN(cLat) && !isNaN(fLat)) {
-        // car frame: COG lat = +ax * scale, Front lat = -ax * scale
-        latPairs.push([cLat * channelScales.cogLat, -fLat * channelScales.frontLat]);
+        // car frame: COG/GPS Front lat = +ax * scale, Mid lat = -ax * scale
+        latPairs.push([cLat * channelScales.cogLat, -fLat * channelScales.midLat]);
       }
       if (!isNaN(cLong) && !isNaN(fLong)) {
-        // car frame: COG long = +ay * scale, Front long = -ay * scale
-        longPairs.push([cLong * channelScales.cogLong, -fLong * channelScales.frontLong]);
+        // car frame: COG/GPS Front long = +ay * scale, Mid long = -ay * scale
+        longPairs.push([cLong * channelScales.cogLong, -fLong * channelScales.midLong]);
       }
     }
     return { lat: fitCalibration(latPairs), long: fitCalibration(longPairs) };
@@ -225,16 +225,16 @@ export default function ImuMotion({ data, boardDropouts, startTs }) {
     };
   }, [processedData, startTs, channelScales]);
 
-  // 2. Longitudinal G comparison across the COG and Front sensors, rotated
+  // 2. Longitudinal G comparison across the COG/GPS Front and Mid sensors, rotated
   // into the car frame (positive = forward accel):
-  //   COG   imu[0].ay * +scale, then calibrated to the Front reference
-  //   Front imu[1].ay * -scale (y points rearward)
+  //   COG   imu[0].ay * +scale, then calibrated to the Mid SMU/IMU reference
+  //   Mid   imu[1].ay * -scale (y points rearward)
   const longComparisonChartData = useMemo(() => {
     const cal = cogCalibration.long;
     return {
       datasets: [
         {
-          label: cal.applied ? 'COG IMU (+ay, calibrated)' : 'COG IMU (+ay)',
+          label: cal.applied ? 'COG/GPS Front SMU/IMU (+ay, calibrated)' : 'COG/GPS Front SMU/IMU (+ay)',
           data: parseLinearData('imu[0].ay', channelScales.cogLong * cal.gain, cal.offset),
           borderColor: '#f97316', // Orange
           borderWidth: 1.5,
@@ -242,8 +242,8 @@ export default function ImuMotion({ data, boardDropouts, startTs }) {
           tension: 0,
         },
         {
-          label: 'Front IMU (-ay)',
-          data: parseLinearData('imu[1].ay', -channelScales.frontLong),
+          label: 'Mid SMU/IMU (-ay)',
+          data: parseLinearData('imu[1].ay', -channelScales.midLong),
           borderColor: '#06b6d4', // Cyan
           borderWidth: 1.5,
           pointRadius: 0,
@@ -253,16 +253,16 @@ export default function ImuMotion({ data, boardDropouts, startTs }) {
     };
   }, [processedData, startTs, channelScales, cogCalibration]);
 
-  // 3. Lateral G comparison across the COG and Front sensors, rotated into
+  // 3. Lateral G comparison across the COG/GPS Front and Mid sensors, rotated into
   // the car frame (positive = right):
-  //   COG   imu[0].ax * +scale, then calibrated to the Front reference
-  //   Front imu[1].ax * -scale (x points left)
+  //   COG   imu[0].ax * +scale, then calibrated to the Mid SMU/IMU reference
+  //   Mid   imu[1].ax * -scale (x points left)
   const latComparisonChartData = useMemo(() => {
     const cal = cogCalibration.lat;
     return {
       datasets: [
         {
-          label: cal.applied ? 'COG IMU (+ax, calibrated)' : 'COG IMU (+ax)',
+          label: cal.applied ? 'COG/GPS Front SMU/IMU (+ax, calibrated)' : 'COG/GPS Front SMU/IMU (+ax)',
           data: parseLinearData('imu[0].ax', channelScales.cogLat * cal.gain, cal.offset),
           borderColor: '#f97316',
           borderWidth: 1.5,
@@ -270,8 +270,8 @@ export default function ImuMotion({ data, boardDropouts, startTs }) {
           tension: 0,
         },
         {
-          label: 'Front IMU (-ax)',
-          data: parseLinearData('imu[1].ax', -channelScales.frontLat),
+          label: 'Mid SMU/IMU (-ax)',
+          data: parseLinearData('imu[1].ax', -channelScales.midLat),
           borderColor: '#06b6d4',
           borderWidth: 1.5,
           pointRadius: 0,
@@ -342,12 +342,12 @@ export default function ImuMotion({ data, boardDropouts, startTs }) {
         lat = (ax ?? 0) * latScale * cogCalibration.lat.gain + cogCalibration.lat.offset;
         long = (ay ?? 0) * longScale * cogCalibration.long.gain + cogCalibration.long.offset;
       } else if (index === 1) {
-        // Front: lat = -ax, long = -ay
+        // Mid: lat = -ax, long = -ay
         const ax = num(row['imu[1].ax']);
         const ay = num(row['imu[1].ay']);
         valid = ax !== null && ay !== null;
-        lat = -(ax ?? 0) * channelScales.frontLat;
-        long = -(ay ?? 0) * channelScales.frontLong;
+        lat = -(ax ?? 0) * channelScales.midLat;
+        long = -(ay ?? 0) * channelScales.midLong;
       }
       // index 2 (Rear IMU) intentionally not handled — excluded from display.
     }
@@ -361,7 +361,7 @@ export default function ImuMotion({ data, boardDropouts, startTs }) {
   };
 
   const cogCoords = getImuCoords(latestRow, 0);
-  const frontCoords = getImuCoords(latestRow, 1);
+  const midCoords = getImuCoords(latestRow, 1);
 
   return (
     <div className="animated-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
@@ -371,7 +371,7 @@ export default function ImuMotion({ data, boardDropouts, startTs }) {
         <div className="glass-panel" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1rem', minHeight: '400px' }}>
           <div style={{ width: '100%', textAlign: 'center' }}>
             <h2 className="section-title" style={{ justifyContent: 'center', borderLeft: 'none', paddingLeft: 0 }}>G-Force Meter</h2>
-            <p className="text-slate-400" style={{ fontSize: '0.8rem', marginTop: '-0.5rem' }}>Real-time dual-IMU acceleration vector (COG + Front)</p>
+            <p className="text-slate-400" style={{ fontSize: '0.8rem', marginTop: '-0.5rem' }}>Real-time dual-IMU acceleration vector (COG/GPS Front + Mid)</p>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', background: 'rgba(0, 0, 0, 0.2)', padding: '1.5rem', borderRadius: '12px', border: '1px solid var(--border-color)', width: '100%', maxWidth: '260px' }}>
@@ -394,8 +394,8 @@ export default function ImuMotion({ data, boardDropouts, startTs }) {
               {/* COG G vector (Cyan) */}
               <circle cx={cogCoords.cx.toFixed(1)} cy={cogCoords.cy.toFixed(1)} r="4.5" fill="#00e5ff" stroke="#ffffff" strokeWidth="0.75" strokeOpacity="0.8" style={{ filter: 'drop-shadow(0 0 4px #00e5ff)', transition: 'cx 80ms ease, cy 80ms ease', opacity: cogCoords.valid ? 1 : 0.2 }}></circle>
 
-              {/* Front G vector (Emerald Green) */}
-              <circle cx={frontCoords.cx.toFixed(1)} cy={frontCoords.cy.toFixed(1)} r="4.5" fill="#00ff7f" stroke="#ffffff" strokeWidth="0.75" strokeOpacity="0.8" style={{ filter: 'drop-shadow(0 0 4px #00ff7f)', transition: 'cx 80ms ease, cy 80ms ease', opacity: frontCoords.valid ? 1 : 0.2 }}></circle>
+              {/* Mid G vector (Emerald Green) */}
+              <circle cx={midCoords.cx.toFixed(1)} cy={midCoords.cy.toFixed(1)} r="4.5" fill="#00ff7f" stroke="#ffffff" strokeWidth="0.75" strokeOpacity="0.8" style={{ filter: 'drop-shadow(0 0 4px #00ff7f)', transition: 'cx 80ms ease, cy 80ms ease', opacity: midCoords.valid ? 1 : 0.2 }}></circle>
             </svg>
 
             {/* Vector Legend */}
@@ -403,7 +403,7 @@ export default function ImuMotion({ data, boardDropouts, startTs }) {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#00e5ff', boxShadow: '0 0 4px #00e5ff' }} />
-                  <span style={{ color: 'var(--text-secondary)' }}>COG</span>
+                  <span style={{ color: 'var(--text-secondary)' }}>COG/GPS Front</span>
                 </div>
                 <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, color: cogCoords.valid ? 'var(--text-primary)' : 'var(--text-muted)' }}>
                   {cogCoords.valid ? `${cogCoords.gMag.toFixed(2)} G` : 'Offline'}
@@ -412,10 +412,10 @@ export default function ImuMotion({ data, boardDropouts, startTs }) {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#00ff7f', boxShadow: '0 0 4px #00ff7f' }} />
-                  <span style={{ color: 'var(--text-secondary)' }}>Front</span>
+                  <span style={{ color: 'var(--text-secondary)' }}>Mid</span>
                 </div>
-                <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, color: frontCoords.valid ? 'var(--text-primary)' : 'var(--text-muted)' }}>
-                  {frontCoords.valid ? `${frontCoords.gMag.toFixed(2)} G` : 'Offline'}
+                <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, color: midCoords.valid ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+                  {midCoords.valid ? `${midCoords.gMag.toFixed(2)} G` : 'Offline'}
                 </span>
               </div>
             </div>

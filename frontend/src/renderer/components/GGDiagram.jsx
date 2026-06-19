@@ -15,9 +15,9 @@ const SENSOR_FRAMES = {
 const FUSED_ID = 9;
 
 const sensorOptions = [
-  { id: 0, label: 'COG IMU', color: '#00e5ff' },
-  { id: 1, label: 'Front IMU', color: '#00ff7f' },
-  { id: FUSED_ID, label: 'Fused (COG + Front avg)', color: '#facc15' },
+  { id: 0, label: 'COG/GPS Front SMU/IMU', color: '#00e5ff' },
+  { id: 1, label: 'Mid SMU/IMU', color: '#00ff7f' },
+  { id: FUSED_ID, label: 'Fused (COG/GPS Front + Mid avg)', color: '#facc15' },
 ];
 
 const SMOOTHING_SECONDS = 0.3;
@@ -463,7 +463,7 @@ export default function GGDiagram({
                   <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', fontSize: '0.8rem' }}>
                     {(selectedSensor?.id === 0 || selectedSensor?.id === FUSED_ID) && cogCalibration.lat.applied ? (
                       <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem', lineHeight: 1.4 }}>
-                        COG calibrated to Front IMU: lat ×{cogCalibration.lat.gain.toFixed(3)} {cogCalibration.lat.offset >= 0 ? '+' : '−'}{Math.abs(cogCalibration.lat.offset).toFixed(3)},
+                        COG/GPS Front calibrated to Mid SMU/IMU: lat ×{cogCalibration.lat.gain.toFixed(3)} {cogCalibration.lat.offset >= 0 ? '+' : '−'}{Math.abs(cogCalibration.lat.offset).toFixed(3)},
                         {' '}long ×{cogCalibration.long.gain.toFixed(3)} {cogCalibration.long.offset >= 0 ? '+' : '−'}{Math.abs(cogCalibration.long.offset).toFixed(3)}
                       </div>
                     ) : null}
