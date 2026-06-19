@@ -939,7 +939,140 @@ function registerIpcHandlers() {
       const inStream = fs.createReadStream(filePath);
       const rl = readline.createInterface({ input: inStream });
       const parser = new StreamTelemetryParser();
+      const rows = [];
+      let isPreParsed = false;
       
+      for await (const line of rl) {
+        if (!line.trim()) continue;
+        try {
+          const data = JSON.parse(line);
+          
+          // Check for pre-parsed/flattened JSONL format
+          if (data.ts !== undefined) {
+            isPreParsed = true;
+            rows.push(data);
+            continue;
+          }
+          
+          let tsMs = Date.now();
+          if (data.timestamp) {
+            tsMs = new Date(data.timestamp).getTime();
+          }
+          
+          // Check for WiFi raw frame batch format
+          if (data.type === 'wifi_raw_frame' && Array.isArray(data.frame)) {
+            for (const frame of data.frame) {
+              const frameId = frame.id;
+              if (frameId === undefined || !frame.d) continue;
+              
+              const upperHex = frame.d.trim().toUpperCase();
+              const dataBytes = [];
+              for (let i = 0; i < upperHex.length; i += 2) {
+                const byteStr = upperHex.substring(i, i + 2);
+                if (byteStr.length === 2) {
+                  const byteVal = parseInt(byteStr, 16);
+                  if (!isNaN(byteVal)) dataBytes.push(byteVal);
+                }
+              }
+              
+              const identifierHex = frameId.toString(16).toUpperCase().padStart(3, '0');
+              const idType = frameId > 0x7FF ? 'extended' : 'standard';
+              const slcan = {
+                ok: true,
+                raw: `t${identifierHex}${(dataBytes.length).toString(16).padStart(2, '0')}${upperHex}`,
+                frameType: idType === 'standard' ? 't' : 'T',
+                idType,
+                identifier: frameId,
+                identifierHex,
+                idText: `0x${identifierHex}`,
+                dataLength: dataBytes.length,
+                dataHex: upperHex,
+                dataBytes,
+              };
+              
+              const parsed = parseSlcanToBoard(slcan, slcan.raw);
+              
+              let frameTsMs = tsMs;
+              if (frame.ts) {
+                frameTsMs = frame.ts * 1000;
+              }
+              
+              parser.addFrame(
+                frameTsMs,
+                parsed.ok ? parsed.board : null,
+                frameId,
+                dataBytes
+              );
+            }
+            continue;
+          }
+          
+          if (data.type === 'frame') {
+            const frameId = data.frame?.identifier ?? 
+                            (data.frame?.identifierHex ? parseInt(data.frame.identifierHex, 16) : undefined) ?? 
+                            data.board?.identifier;
+            const dataBytes = data.frame?.dataBytes ?? data.board?.dataBytes;
+            
+            if (data.board || (frameId !== undefined && dataBytes)) {
+              parser.addFrame(
+                tsMs,
+                data.board || null,
+                frameId,
+                dataBytes
+              );
+              continue;
+            }
+          }
+          
+          if (data.raw) {
+            const parsedFrame = parseMduLine(data.raw);
+            if (parsedFrame.ok) {
+              parser.addFrame(tsMs, parsedFrame.board, parsedFrame.identifier, parsedFrame.dataBytes);
+            }
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+      
+      if (isPreParsed && rows.length > 0) {
+        rows.sort((a, b) => parseFloat(a.ts) - parseFloat(b.ts));
+        return decimateRows(rows);
+      }
+      
+      return decimateRows(parser.finish());
+    }
+    return [];
+  }
+
+  ipcMain.handle('file:parse-telemetry', async (_event, filePath) => {
+    try {
+      return await parseTelemetryFile(filePath);
+    } catch (e) {
+      console.error('Error parsing telemetry file:', e);
+      throw e;
+    }
+  });
+
+  ipcMain.handle('file:convert-jsonl-to-csv', async (_event, inputPath) => {
+    try {
+      const baseName = path.basename(inputPath, path.extname(inputPath));
+      const result = await dialog.showSaveDialog({
+        title: 'Save Converted CSV Log',
+        defaultPath: path.join(path.dirname(inputPath), `${baseName}_DECODED.csv`),
+        filters: [{ name: 'CSV Files', extensions: ['csv'] }],
+        properties: ['createDirectory', 'showOverwriteConfirmation'],
+      });
+
+      if (result.canceled || !result.filePath) {
+        return null;
+      }
+
+      const outputPath = result.filePath;
+      const inStream = fs.createReadStream(inputPath);
+      const rl = readline.createInterface({ input: inStream });
+      const parser = new StreamTelemetryParser();
+
       for await (const line of rl) {
         if (!line.trim()) continue;
         try {
@@ -948,7 +1081,7 @@ function registerIpcHandlers() {
           if (data.timestamp) {
             tsMs = new Date(data.timestamp).getTime();
           }
-          
+
           if (data.type === 'frame' && data.board) {
             parser.addFrame(
               tsMs,
@@ -966,16 +1099,36 @@ function registerIpcHandlers() {
           // ignore
         }
       }
-      return decimateRows(parser.finish());
-    }
-    return [];
-  }
 
-  ipcMain.handle('file:parse-telemetry', async (_event, filePath) => {
-    try {
-      return await parseTelemetryFile(filePath);
+      const rows = parser.finish();
+      if (rows.length === 0) {
+        throw new Error('No valid telemetry frame rows found in JSONL file.');
+      }
+
+      const signalStateKeys = Object.keys(createInitialSignalState());
+      const headers = ['ts', ...signalStateKeys];
+
+      const outStream = fs.createWriteStream(outputPath, 'utf8');
+      outStream.write(headers.join(',') + '\n');
+
+      for (const row of rows) {
+        const rowValues = headers.map(h => {
+          const val = row[h];
+          if (val === undefined || val === null) {
+            return '';
+          }
+          if (typeof val === 'string') {
+            return `"${val.replace(/"/g, '""')}"`;
+          }
+          return val;
+        });
+        outStream.write(rowValues.join(',') + '\n');
+      }
+
+      outStream.end();
+      return outputPath;
     } catch (e) {
-      console.error('Error parsing telemetry file:', e);
+      console.error('Error converting JSONL to CSV:', e);
       throw e;
     }
   });

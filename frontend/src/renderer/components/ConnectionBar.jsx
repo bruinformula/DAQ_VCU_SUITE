@@ -21,6 +21,10 @@ export default function ConnectionBar() {
     stopLogging,
     clearLiveSession,
     toggleLiveMode,
+    autoLogEnabled,
+    setAutoLogEnabled,
+    autoLogFolder,
+    selectAutoLogFolder,
 
     // WiFi States/Handlers
     activeTransport,
@@ -378,6 +382,32 @@ export default function ConnectionBar() {
               <RefreshCw size={14} id="parse-can-btn-icon" />
               <span>Parse Raw CAN</span>
             </button>
+            <button 
+              className="button" 
+              title="Convert JSONL log file to CSV format"
+              onClick={async () => {
+                try {
+                  const filePath = await window.mduDebug.openFile();
+                  if (filePath) {
+                    if (!filePath.toLowerCase().endsWith('.jsonl')) {
+                      alert('Please select a valid .jsonl log file.');
+                      return;
+                    }
+                    const outPath = await window.mduDebug.convertJsonlToCsv(filePath);
+                    if (outPath) {
+                      alert(`Successfully converted and saved to:\n${outPath}`);
+                      scanFolder();
+                    }
+                  }
+                } catch (e) {
+                  alert(`Conversion failed: ${e.message}`);
+                }
+              }} 
+              style={{ padding: '0.25rem 0.5rem', display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.8rem' }}
+            >
+              <ArrowLeftRight size={14} />
+              <span>Convert JSONL to CSV</span>
+            </button>
             {parseProgress !== null && (
               <span style={{ fontSize: '0.8rem', color: '#10b981', fontWeight: 'bold' }}>
                 {parseProgress.toFixed(0)}%
@@ -417,6 +447,42 @@ export default function ConnectionBar() {
           {logStatus.active ? <Square size={12} fill="currentColor" /> : <Play size={12} fill="currentColor" />}
           <span>{logStatus.active ? 'Stop Log' : 'Start Log'}</span>
         </button>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', borderLeft: '1px solid rgba(255, 255, 255, 0.15)', paddingLeft: '0.75rem', marginRight: '0.25rem' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.8rem', cursor: 'pointer', color: 'var(--text-secondary)', userSelect: 'none' }}>
+            <input
+              type="checkbox"
+              id="auto-log-toggle"
+              checked={autoLogEnabled}
+              onChange={(e) => setAutoLogEnabled(e.target.checked)}
+              style={{ cursor: 'pointer', accentColor: '#10b981' }}
+            />
+            <span>Auto Log</span>
+          </label>
+          <button
+            className="button"
+            onClick={selectAutoLogFolder}
+            disabled={!autoLogEnabled}
+            title={autoLogFolder ? `Auto logs directory: ${autoLogFolder}` : "Select auto logs directory"}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.25rem',
+              padding: '0.25rem 0.4rem',
+              fontSize: '0.75rem',
+              opacity: autoLogEnabled ? 1 : 0.5,
+              cursor: autoLogEnabled ? 'pointer' : 'not-allowed',
+              backgroundColor: 'rgba(255, 255, 255, 0.05)',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+              borderRadius: '4px'
+            }}
+          >
+            <FolderOpen size={12} />
+            <span style={{ maxWidth: '85px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {autoLogFolder ? (autoLogFolder.split('/').pop() || autoLogFolder) : 'Select Dir'}
+            </span>
+          </button>
+        </div>
 
         {/* Stats */}
         <div style={{ display: 'flex', gap: '0.75rem', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
