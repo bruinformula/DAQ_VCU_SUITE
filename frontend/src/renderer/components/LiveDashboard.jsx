@@ -1031,30 +1031,30 @@ export default function LiveDashboard() {
             </div>
 
             <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center' }}>
-              {/* Radial SOC progress */}
+              {/* Radial Pack Voltage progress */}
               <div style={{ position: 'relative', width: '80px', height: '80px' }}>
                 <svg width="80" height="80" viewBox="0 0 36 36">
                   <circle cx="18" cy="18" r="16" fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="3.5" />
                   <circle cx="18" cy="18" r="16" fill="none" 
-                    stroke={soc < thresholds.batterySocMin ? 'var(--color-danger)' : 'var(--color-success)'} 
+                    stroke={'var(--color-success)'} 
                     strokeWidth="3.5" 
-                    strokeDasharray={`${soc}, 100`} 
+                    strokeDasharray={`${Math.min((Number(latestValues['bms.v'] || 0) / 400) * 100, 100)}, 100`} 
                     strokeLinecap="round"
                     transform="rotate(-90 18 18)"
                   />
                 </svg>
                 <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-                  <span style={{ fontSize: '0.9rem', fontWeight: 700 }}>{val('bms.soc', 0)}%</span>
-                  <span style={{ fontSize: '0.5rem', color: 'var(--text-secondary)', fontWeight: 600 }}>SOC</span>
+                  <span style={{ fontSize: '0.9rem', fontWeight: 700 }}>{val('bms.v', 0)}V</span>
+                  <span style={{ fontSize: '0.5rem', color: 'var(--text-secondary)', fontWeight: 600 }}>PACK V</span>
                 </div>
               </div>
 
-              {/* Voltage & Current */}
-              {/* Voltage & Current & Power */}
+              {/* SOC & Current */}
+              {/* SOC & Current & Power */}
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '0.15rem' }}>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Voltage</span>
-                  <strong style={{ fontSize: '0.85rem' }}>{val('bms.v', 1)} V</strong>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>SOC</span>
+                  <strong style={{ fontSize: '0.85rem' }}>{val('bms.soc', 1)} %</strong>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '0.15rem' }}>
                   <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Current</span>
