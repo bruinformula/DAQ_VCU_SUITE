@@ -257,6 +257,7 @@ class TelemetryState:
         self.pending_log_filename: str = ""
         self.active_log_filename: str = ""
         self.active_log_directory: str = ""
+        self.run_start_time: float = time.time()
 
         # Full inverter telemetry payloads
         self.inv_all: dict[str, float | int | bool] = {}
@@ -2463,4 +2464,84 @@ async def get_log_file(log_token: str):
         "filename": path.name,
         "headers": headers,
         "rows": rows,
+    })
+
+
+def read_frames_from_csv(can_filepath: Path, since: float) -> list[dict]:
+    frames = []
+    try:
+        with can_filepath.open('r', encoding='utf-8', errors='ignore') as f:
+            reader = csv.reader(f)
+            next(reader, None)  # Skip header
+            for row in reader:
+                if not row or len(row) < 5:
+                    continue
+                try:
+                    ts = float(row[0])
+                    if ts >= since:
+                        can_id = int(row[2])
+                        dlc = int(row[3])
+                        data_hex = row[4]
+                        frames.append({
+                            'ts': ts,
+                            'id': can_id,
+                            'dlc': dlc,
+                            'd': data_hex
+                        })
+                except (ValueError, IndexError):
+                    continue
+    except Exception as e:
+        print(f"[SYNC] Error reading active log file: {e}")
+    return frames
+
+
+@app.get("/api/sync_raw")
+async def sync_raw_frames(since: float = 0.0, force: bool = False):
+    """
+    Retrieve raw CAN frames since the given timestamp.
+    Clamps 'since' to the run start time by default unless 'force' is True.
+    First tries to read from the active log _CAN.csv file if logging is active.
+    Falls back to the in-memory CAN_RAW_BUFFER.
+    """
+    if not force:
+        since = max(since, STATE.run_start_time)
+
+    frames = []
+    active_dir = STATE.active_log_directory
+    active_file = STATE.active_log_filename
+    
+    if active_dir and active_file:
+        filepath = Path(active_dir) / active_file
+        can_filename = filepath.stem + '_CAN.csv'
+        can_filepath = filepath.parent / can_filename
+        
+        if can_filepath.exists():
+            # Run file reading in a thread pool to avoid blocking the event loop
+            frames = await asyncio.to_thread(read_frames_from_csv, can_filepath, since)
+            
+    if not frames:
+        # Fall back to CAN_RAW_BUFFER
+        buffer_copy = list(CAN_RAW_BUFFER)
+        for item in buffer_copy:
+            ts, can_id, dlc, data_hex = item
+            if ts >= since:
+                frames.append({
+                    'ts': ts,
+                    'id': can_id,
+                    'dlc': dlc,
+                    'd': data_hex
+                })
+                
+    frames.sort(key=lambda x: x['ts'])
+    
+    max_sync_frames = 100000
+    if len(frames) > max_sync_frames:
+        print(f"[SYNC] Truncating sync response from {len(frames)} to {max_sync_frames} frames.")
+        frames = frames[-max_sync_frames:]
+        
+    return JSONResponse({
+        "ok": True,
+        "since": since,
+        "count": len(frames),
+        "frames": frames
     })
