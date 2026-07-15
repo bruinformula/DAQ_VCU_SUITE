@@ -982,6 +982,28 @@ async def loop_mdu_serial_port(port: str, baud: int) -> None:
             )
             print(f"[SERIAL] Connected to {port}")
 
+            async def send_sync_message(w):
+                import time
+                while True:
+                    try:
+                        # 0x3E8 = 1000. Data = 64-bit microsecond timestamp (8 bytes)
+                        now_us = int(time.time() * 1000000)
+                        # Mask to 64-bit unsigned integer
+                        now_us = now_us & 0xFFFFFFFFFFFFFFFF
+                        data_hex = f"{now_us:016X}"
+                        # SLCAN format: t[ID3][Len1][Data]
+                        msg = f"t3E88{data_hex}\r".encode('utf-8')
+                        w.write(msg)
+                        await w.drain()
+                        await asyncio.sleep(1)
+                    except Exception as e:
+                        print(f"[SERIAL] Sync message task error: {e}")
+                        break
+
+            # Start sending sync messages periodically
+            start_background_task(send_sync_message(writer))
+
+
             buffer = b''
             while True:
                 chunk = await reader.read(4096)
