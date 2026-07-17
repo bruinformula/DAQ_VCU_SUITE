@@ -30,14 +30,21 @@ npm install
 
 ## Run The App Locally
 
-For normal Electron development:
+There are two ways to run the app locally from the `frontend` directory:
 
+### Option A: Standard Run (Recommended for general use)
+Builds the static assets once and launches the Electron application.
+```bash
+cd frontend
+npm start
+```
+
+### Option B: Active Development (Recommended when editing code)
+Starts the Vite dev server with Hot Module Replacement (HMR) and opens Electron. Any changes you make to the UI code will instantly reload in the window.
 ```bash
 cd frontend
 npm run electron:dev
 ```
-
-That starts the Vite frontend and launches the desktop app together.
 
 ## Build On macOS
 
@@ -50,7 +57,7 @@ npm run electron:build:mac
 
 Output:
 
-- `frontend/dist-electron/Bruin Formula Racing Telemetry-0.0.0-arm64.dmg`
+- `frontend/dist/MDU Debug GUI-0.1.0-arm64.dmg` (or similar)
 
 There is also a generic build command:
 
@@ -73,7 +80,7 @@ npm run electron:build:win
 
 Expected output:
 
-- `frontend/dist-electron/*.exe`
+- `frontend/dist/*.exe` (e.g., `frontend/dist/MDU Debug GUI Setup 0.1.0.exe`)
 
 The Windows target is configured as `nsis`, so the packaged output is an installer-style `.exe`.
 
@@ -84,12 +91,20 @@ The Windows target is configured as `nsis`, so the packaged output is an install
 - If native Electron dependencies rebuild during packaging, that is expected.
 - The backend on the Raspberry Pi is separate from the desktop packaging workflow.
 
-## Backend Reminder
+## Backend Reminder & Raspberry Pi Connection
 
-If backend changes are made and the Pi needs the latest parser/service code:
+The backend telemetry service runs directly on the Raspberry Pi installed in the car. 
 
+### 1. Connect to the Pi's Wi-Fi Network
+### 2. SSH into the Pi
+### 3. Transferring Files (SFTP/SCP)
+### 4. Apply Changes & Restart Service
+After pulling changes from Git or uploading them via SFTP, restart the background Python service on the Pi so it loads the new code:
 ```bash
+# In the Pi's SSH terminal:
 cd ~/DAQ_VCU_SUITE
-git pull
+git pull # (if using the Git workflow)
+
+# Restart the service:
 sudo systemctl restart telemetry-hub.service
 ```
