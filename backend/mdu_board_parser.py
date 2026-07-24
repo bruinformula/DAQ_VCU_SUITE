@@ -128,12 +128,12 @@ def _decode_tshmu_temp_blocks(data: list[int]) -> list[dict]:
             break
         blocks.append({
             'index': index,
-            'temp1': _to_signed16(_get_u16_le(data, offset)) / 1000.0,
-            'temp2': _to_signed16(_get_u16_le(data, offset + 2)) / 1000.0,
-            'temp3': _to_signed16(_get_u16_le(data, offset + 4)) / 1000.0,
-            'temp4': _to_signed16(_get_u16_le(data, offset + 6)) / 1000.0,
-            'temp5': _to_signed16(_get_u16_le(data, offset + 8)) / 1000.0,
-            'temp6': _to_signed16(_get_u16_le(data, offset + 10)) / 1000.0,
+            'temp1': _to_signed16(_get_u16_le(data, offset)) / 10.0,
+            'temp2': _to_signed16(_get_u16_le(data, offset + 2)) / 10.0,
+            'temp3': _to_signed16(_get_u16_le(data, offset + 4)) / 10.0,
+            'temp4': _to_signed16(_get_u16_le(data, offset + 6)) / 10.0,
+            'temp5': _to_signed16(_get_u16_le(data, offset + 8)) / 10.0,
+            'temp6': _to_signed16(_get_u16_le(data, offset + 10)) / 10.0,
             'jitterMs': _to_signed8(data[offset + 12]),
         })
     return blocks

@@ -60,19 +60,26 @@ export default function Overview({ data, dropouts = [], startTs = 0 }) {
       rr: getMaxField('sdu[3].shock'),
     };
 
-    // Check which boards seem active (non-zero or non-empty readings)
+    const checkActive = (key) => {
+      if (validRows.length === 0) return false;
+      const start = parseFloat(validRows[0][key]) || 0;
+      const end = parseFloat(validRows[validRows.length - 1][key]) || 0;
+      return end > start;
+    };
+
+    // Check which boards seem active (non-zero readings OR incrementing rx_count)
     const activeBoards = {
-      smu0: validRows.some(row => (parseFloat(row['gps.lat']) !== 0 && !isNaN(parseFloat(row['gps.lat']))) || (parseFloat(row['imu[0].ax']) !== 0 && !isNaN(parseFloat(row['imu[0].ax'])))),
+      smu0: checkActive('gps.rx_count') || validRows.some(row => (parseFloat(row['gps.lat']) !== 0 && !isNaN(parseFloat(row['gps.lat']))) || (parseFloat(row['imu[0].ax']) !== 0 && !isNaN(parseFloat(row['imu[0].ax'])))),
       smu1: validRows.some(row => parseFloat(row['imu[1].ax']) !== 0 && !isNaN(parseFloat(row['imu[1].ax']))),
       smu2: validRows.some(row => parseFloat(row['imu[2].ax']) !== 0 && !isNaN(parseFloat(row['imu[2].ax']))),
-      sdu0: validRows.some(row => parseFloat(row['sdu[0].brake']) > 0),
-      sdu1: validRows.some(row => parseFloat(row['sdu[1].brake']) > 0),
-      sdu2: validRows.some(row => parseFloat(row['sdu[2].brake']) > 0),
-      sdu3: validRows.some(row => parseFloat(row['sdu[3].brake']) > 0),
-      tshmu0: validRows.some(row => parseFloat(row['tshmu[0].flow1']) > 0 || parseFloat(row['tshmu[0].jitter_us']) > 0),
-      tshmu1: validRows.some(row => parseFloat(row['tshmu[1].flow1']) > 0 || parseFloat(row['tshmu[1].jitter_us']) > 0),
-      tspmu0: validRows.some(row => parseFloat(row['tspmu[0].p1']) > 0),
-      tspmu1: validRows.some(row => parseFloat(row['tspmu[1].p1']) > 0),
+      sdu0: checkActive('sdu[0].rx_count') || validRows.some(row => parseFloat(row['sdu[0].brake']) > 0 || parseFloat(row['sdu[0].shock']) !== 0),
+      sdu1: checkActive('sdu[1].rx_count') || validRows.some(row => parseFloat(row['sdu[1].brake']) > 0 || parseFloat(row['sdu[1].shock']) !== 0),
+      sdu2: checkActive('sdu[2].rx_count') || validRows.some(row => parseFloat(row['sdu[2].brake']) > 0 || parseFloat(row['sdu[2].shock']) !== 0),
+      sdu3: checkActive('sdu[3].rx_count') || validRows.some(row => parseFloat(row['sdu[3].brake']) > 0 || parseFloat(row['sdu[3].shock']) !== 0),
+      tshmu0: checkActive('tshmu[0].rx_count') || validRows.some(row => parseFloat(row['tshmu[0].temp1']) > 0 || parseFloat(row['tshmu[0].flow1']) > 0 || parseFloat(row['tshmu[0].jitter_us']) > 0),
+      tshmu1: checkActive('tshmu[1].rx_count') || validRows.some(row => parseFloat(row['tshmu[1].temp1']) > 0 || parseFloat(row['tshmu[1].flow1']) > 0 || parseFloat(row['tshmu[1].jitter_us']) > 0),
+      tspmu0: checkActive('tspmu[0].rx_count') || validRows.some(row => parseFloat(row['tspmu[0].p1']) > 0),
+      tspmu1: checkActive('tspmu[1].rx_count') || validRows.some(row => parseFloat(row['tspmu[1].p1']) > 0),
     };
 
     return {
@@ -246,19 +253,19 @@ export default function Overview({ data, dropouts = [], startTs = 0 }) {
             Verification of active data streams detected within the selected test file.
           </p>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.75rem', background: 'rgba(0,0,0,0.2)', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyBetween: 'space-between', padding: '0.75rem', background: 'rgba(0,0,0,0.2)', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
               <span style={{ fontSize: '0.875rem' }}>COG/GPS Front SMU/IMU (SMU 0)</span>
               <span className={`corner-label ${stats.activeBoards.smu0 ? 'corner-fr' : 'corner-fl'}`} style={{ marginLeft: 'auto' }}>
                 {stats.activeBoards.smu0 ? 'Active' : 'Offline'}
               </span>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.75rem', background: 'rgba(0,0,0,0.2)', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyBetween: 'space-between', padding: '0.75rem', background: 'rgba(0,0,0,0.2)', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
               <span style={{ fontSize: '0.875rem' }}>Mid SMU/IMU (SMU 1)</span>
               <span className={`corner-label ${stats.activeBoards.smu1 ? 'corner-rl' : 'corner-fl'}`} style={{ marginLeft: 'auto' }}>
                 {stats.activeBoards.smu1 ? 'Active' : 'Offline'}
               </span>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.75rem', background: 'rgba(0,0,0,0.2)', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyBetween: 'space-between', padding: '0.75rem', background: 'rgba(0,0,0,0.2)', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
               <span style={{ fontSize: '0.875rem' }}>Rear SMU/IMU (SMU 2)</span>
               <span className={`corner-label ${stats.activeBoards.smu2 ? 'corner-rr' : 'corner-fl'}`} style={{ marginLeft: 'auto' }}>
                 {stats.activeBoards.smu2 ? 'Active' : 'Offline'}

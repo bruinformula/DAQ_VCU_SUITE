@@ -34,7 +34,9 @@ const initialSignalState = {
 
   // TSHMU
   'tshmu[0].flow1': 0.0, 'tshmu[0].flow2': 0.0, 'tshmu[0].jitter_us': 0, 'tshmu[0].error_flags': 0,
+  'tshmu[0].temp1': 0.0, 'tshmu[0].temp2': 0.0, 'tshmu[0].temp3': 0.0, 'tshmu[0].temp4': 0.0, 'tshmu[0].temp5': 0.0, 'tshmu[0].temp6': 0.0,
   'tshmu[1].flow1': 0.0, 'tshmu[1].flow2': 0.0, 'tshmu[1].jitter_us': 0, 'tshmu[1].error_flags': 0,
+  'tshmu[1].temp1': 0.0, 'tshmu[1].temp2': 0.0, 'tshmu[1].temp3': 0.0, 'tshmu[1].temp4': 0.0, 'tshmu[1].temp5': 0.0, 'tshmu[1].temp6': 0.0,
 
   // Inverter New Signals
   'inv.all.control_board_temp': 0.0, 'inv.all.rtd1_temp': 0.0, 'inv.all.rtd2_temp': 0.0, 'inv.all.stall_burst_model_temp': 0.0,
@@ -61,6 +63,12 @@ const initialSignalState = {
   'fusebox.all.fusebox_state': 0, 'fusebox.all.dcdc_voltage': 0.0, 'fusebox.all.battery_voltage': 0.0, 'fusebox.all.lvb_soc': 0, 'fusebox.all.dcdc_temp': 0.0,
   'fusebox.all.accy_fan_power': 0.0, 'fusebox.all.tractive_fan_power': 0.0, 'fusebox.all.tractive_pumps_power': 0.0, 'fusebox.all.charging_power': 0.0,
   'fusebox.all.ambient_temp': 0.0,
+
+  // Reception Tracking
+  'sdu[0].rx_count': 0, 'sdu[1].rx_count': 0, 'sdu[2].rx_count': 0, 'sdu[3].rx_count': 0,
+  'tspmu[0].rx_count': 0, 'tspmu[1].rx_count': 0,
+  'tshmu[0].rx_count': 0, 'tshmu[1].rx_count': 0,
+  'gps.rx_count': 0, 'bms.rx_count': 0, 'inv.rx_count': 0, 'fusebox.rx_count': 0, 'vcu.rx_count': 0,
 };
 
 function decodeStandardCan(id, dataBytes) {
@@ -322,6 +330,7 @@ function updateStateFromBoard(state, board, id, dataBytes) {
     const bid = board.boardId;
     
     if (bt === 2) { // SDU
+      state[`sdu[${bid}].rx_count`] = (state[`sdu[${bid}].rx_count`] || 0) + 1;
       if (board.shockMm !== undefined) state[`sdu[${bid}].shock`] = board.shockMm;
       if (board.brakeC !== undefined) state[`sdu[${bid}].brake`] = board.brakeC;
       if (board.rpm !== undefined) state[`sdu[${bid}].wrpm`] = board.rpm;
@@ -332,11 +341,21 @@ function updateStateFromBoard(state, board, id, dataBytes) {
         state[`sdu[${bid}].tire[3]`] = board.tireC.ambient;
       }
     } else if (bt === 4) { // TSHMU
+      state[`tshmu[${bid}].rx_count`] = (state[`tshmu[${bid}].rx_count`] || 0) + 1;
       if (board.flow1 !== undefined) state[`tshmu[${bid}].flow1`] = board.flow1;
       if (board.flow2 !== undefined) state[`tshmu[${bid}].flow2`] = board.flow2;
       if (board.jitter !== undefined) state[`tshmu[${bid}].jitter_us`] = board.jitter;
       if (board.errorFlags !== undefined) state[`tshmu[${bid}].error_flags`] = board.errorFlags;
+      if (board.temp1 !== undefined) {
+        state[`tshmu[${bid}].temp1`] = board.temp1;
+        state[`tshmu[${bid}].temp2`] = board.temp2;
+        state[`tshmu[${bid}].temp3`] = board.temp3;
+        state[`tshmu[${bid}].temp4`] = board.temp4;
+        state[`tshmu[${bid}].temp5`] = board.temp5;
+        state[`tshmu[${bid}].temp6`] = board.temp6;
+      }
     } else if (bt === 6) { // TSPMU
+      state[`tspmu[${bid}].rx_count`] = (state[`tspmu[${bid}].rx_count`] || 0) + 1;
       if (board.pressure1 !== undefined) state[`tspmu[${bid}].p1`] = board.pressure1;
       if (board.pressure2 !== undefined) state[`tspmu[${bid}].p2`] = board.pressure2;
       if (board.tempBlocks && board.tempBlocks[0]) {
@@ -351,6 +370,7 @@ function updateStateFromBoard(state, board, id, dataBytes) {
         state[`tspmu[${bid}].temps[3]`] = board.tspmuTemp4;
       }
     } else if (bt === 7 || bt === 1) { // GPS / SMU
+      state['gps.rx_count'] = (state['gps.rx_count'] || 0) + 1;
       if (board.gpsPos) {
         state['gps.lat'] = board.gpsPos.latDeg;
         state['gps.lon'] = board.gpsPos.lonDeg;
@@ -392,9 +412,15 @@ function updateStateFromBoard(state, board, id, dataBytes) {
         state[`${stateIdx}.ax`] = board.accelX / 1000.0;
         state[`${stateIdx}.ay`] = board.accelY / 1000.0;
         state[`${stateIdx}.az`] = board.accelZ / 1000.0;
-        state[`${stateIdx}.pitch`] = board.veloX / 100.0;
-        state[`${stateIdx}.roll`] = board.veloY / 100.0;
-        state[`${stateIdx}.yaw`] = board.veloZ / 100.0;
+        state[`${stateIdx}.pitch`] = board.veloB / 100.0;
+        state[`${stateIdx}.roll`] = board.veloA / 100.0;
+        state[`${stateIdx}.yaw`] = board.veloC / 100.0;
+
+        if (bid === 0) {
+          state['imu.pitch'] = board.veloB / 100.0;
+          state['imu.roll'] = board.veloA / 100.0;
+          state['imu.yaw'] = board.veloC / 100.0;
+        }
       }
     }
   } else if (id !== undefined && dataBytes) {
@@ -402,6 +428,13 @@ function updateStateFromBoard(state, board, id, dataBytes) {
     if (dec) {
       for (const [k, v] of Object.entries(dec)) {
         state[k] = v;
+      }
+      if (id >= 1712 && id <= 1714) {
+        state['bms.rx_count'] = (state['bms.rx_count'] || 0) + 1;
+      } else if (id >= 160 && id <= 166) {
+        state['inv.rx_count'] = (state['inv.rx_count'] || 0) + 1;
+      } else if (id === 1264 || id === 1266) {
+        state['fusebox.rx_count'] = (state['fusebox.rx_count'] || 0) + 1;
       }
     }
   }
@@ -434,19 +467,23 @@ export function TelemetryProvider({ children }) {
   const [diagnostics, setDiagnostics] = useState({});
   const [logStatus, setLogStatus] = useState({ active: false, filePath: null, linesWritten: 0, bytesWritten: 0 });
   
-  const logStatusRef = useRef(logStatus);
-  useEffect(() => {
-    logStatusRef.current = logStatus;
-  }, [logStatus]);
-
   // Auto-logging states
   const [autoLogEnabled, setAutoLogEnabled] = useState(false);
   const [autoLogFolder, setAutoLogFolder] = useState('');
   const wasConnectedRef = useRef(false);
 
+  const logStatusRef = useRef(logStatus);
+  useEffect(() => {
+    logStatusRef.current = logStatus;
+  }, [logStatus]);
+
   // WiFi Telemetry State
-  const [activeTransport, setActiveTransport] = useState('serial'); // 'serial' or 'wifi'
+  const [activeTransport, setActiveTransport] = useState('serial'); // 'serial', 'wifi', or 'basestation'
   const [targetIp, setTargetIp] = useState('');
+ 
+  // Base Station State
+  const [baseStationStatus, setBaseStationStatus] = useState(null);
+  const [baseStationConnState, setBaseStationConnState] = useState({ state: 'disconnected', ip: '' });
   const [wifiState, setWifiState] = useState('disconnected'); // 'disconnected', 'connecting', 'connected', 'reconnecting', 'degraded'
   const [wifiMessage, setWifiMessage] = useState('Waiting for telemetry link.');
   const [isWifiLogging, setIsWifiLogging] = useState(false);
@@ -828,6 +865,11 @@ export function TelemetryProvider({ children }) {
       lastMessageAtRef.current = Date.now();
       startHealthMonitor();
       try {
+        await fetch(`http://${nextIp}:8000/api/sync-time`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ timestamp_s: Date.now() / 1000 })
+        }).catch(err => console.log('Time sync failed:', err));
         await refreshStatus(nextIp);
         await fetchWifiLogs();
       } catch (err) {
@@ -855,7 +897,7 @@ export function TelemetryProvider({ children }) {
           rawCanLogRef.current = buf.slice(buf.length - 2000);
         }
         setRawCanLog([...rawCanLogRef.current]);
-
+        
         // Use the batched IPC call for much higher throughput
         const parsedFrames = await window.mduDebug.parseWifiFrames(frames);
         for (const parsedFrame of parsedFrames) {
@@ -1008,10 +1050,42 @@ export function TelemetryProvider({ children }) {
         Object.assign(latestStateRef.current, snapshot.flat);
       }
     });
-
+ 
+    const unsubBaseStationStatus = window.mduDebug.onBaseStationStatus((status) => {
+      setBaseStationStatus(status);
+    });
+ 
+    const unsubBaseStationConnection = window.mduDebug.onBaseStationConnection((conn) => {
+      setBaseStationConnState(conn || { state: 'disconnected', ip: '' });
+      if (conn && conn.state === 'connected') {
+        setActiveTransport('basestation');
+        setIsLiveMode(true);
+        if (!liveIntervalRef.current) {
+          liveStartMsRef.current = Date.now();
+          liveBufferRef.current = [];
+          latestStateRef.current = { ...initialSignalState };
+ 
+          liveIntervalRef.current = setInterval(() => {
+            const nowMs = Date.now();
+            const tsSeconds = (nowMs - liveStartMsRef.current) / 1000;
+            liveBufferRef.current.push({ ts: tsSeconds.toFixed(3), ...latestStateRef.current });
+            if (liveBufferRef.current.length > 2000) liveBufferRef.current.shift();
+            setLatestValues({ ...latestStateRef.current });
+            setActiveDataset([...liveBufferRef.current]);
+          }, 100);
+        }
+      } else if (conn && conn.state === 'disconnected') {
+        // Only stop if WiFi and Serial are also inactive
+        if (liveIntervalRef.current && !wsRef.current && !serialConnectedRef.current) {
+          clearInterval(liveIntervalRef.current);
+          liveIntervalRef.current = null;
+        }
+      }
+    });
+ 
     // Check for standard listing refresh
     window.mduDebug.listPorts();
-
+ 
     return () => {
       unsubPorts();
       unsubConnection();
@@ -1019,6 +1093,8 @@ export function TelemetryProvider({ children }) {
       unsubLogStatus();
       unsubFrames();
       unsubWifiSnapshot();
+      unsubBaseStationStatus();
+      unsubBaseStationConnection();
       if (liveIntervalRef.current) clearInterval(liveIntervalRef.current);
     };
   }, []);
@@ -1320,6 +1396,20 @@ export function TelemetryProvider({ children }) {
         fetchWifiLogs,
         fetchWifiLogFile,
         scanNetwork,
+ 
+        // Base Station TCP Client Integrations
+        baseStationStatus,
+        baseStationConnState,
+        connectBaseStation: (ip) => {
+          setActiveTransport('basestation');
+          window.mduDebug.basestationConnect(ip);
+        },
+        disconnectBaseStation: () => {
+          window.mduDebug.basestationDisconnect();
+        },
+        sendBaseStationCommand: (cmd) => {
+          window.mduDebug.basestationSendCommand(cmd);
+        },
 
         // Raw CAN console
         rawCanLog,

@@ -5,6 +5,7 @@ import ZoomableLine from './ZoomableLine';
 
 export default function TractiveSystem({ data, boardDropouts, startTs }) {
   const [selectedTspmuBoard, setSelectedTspmuBoard] = useState('0'); // '0' or '1'
+  const [selectedTshmuBoard, setSelectedTshmuBoard] = useState('0'); // '0' or '1'
 
   // Downsample data for visualization performance
   const processedData = useMemo(() => {
@@ -146,6 +147,13 @@ export default function TractiveSystem({ data, boardDropouts, startTs }) {
     return selectedTspmuBoard === '0' ? tspmu0Plugin : tspmu1Plugin;
   }, [selectedTspmuBoard, tspmu0Plugin, tspmu1Plugin]);
 
+  const tshmu0Plugin = useMemo(() => createDropoutPlugin(tshmu0Dropouts, startTs), [tshmu0Dropouts, startTs]);
+  const tshmu1Plugin = useMemo(() => createDropoutPlugin(tshmu1Dropouts, startTs), [tshmu1Dropouts, startTs]);
+  
+  const selectedTshmuPlugin = useMemo(() => {
+    return selectedTshmuBoard === '0' ? tshmu0Plugin : tshmu1Plugin;
+  }, [selectedTshmuBoard, tshmu0Plugin, tshmu1Plugin]);
+
   const bmsPlugin = useMemo(() => createDropoutPlugin(bmsDropouts, startTs), [bmsDropouts, startTs]);
 
   // Helper to parse a field to continuous linear datasets
@@ -285,6 +293,63 @@ export default function TractiveSystem({ data, boardDropouts, startTs }) {
       ]
     };
   }, [selectedTspmuBoard, processedData, startTs]);
+
+  // 3. TSHMU Thermistor Temperatures (Selected Board)
+  const tshmuTempChartData = useMemo(() => {
+    const prefix = `tshmu[${selectedTshmuBoard}]`;
+    return {
+      datasets: [
+        {
+          label: 'Temp 1',
+          data: parseLinearData(`${prefix}.temp1`),
+          borderColor: '#70d6ff',
+          borderWidth: 1.5,
+          pointRadius: 0,
+          tension: 0,
+        },
+        {
+          label: 'Temp 2',
+          data: parseLinearData(`${prefix}.temp2`),
+          borderColor: '#9bf6ff',
+          borderWidth: 1.5,
+          pointRadius: 0,
+          tension: 0,
+        },
+        {
+          label: 'Temp 3',
+          data: parseLinearData(`${prefix}.temp3`),
+          borderColor: '#8cffc1',
+          borderWidth: 1.5,
+          pointRadius: 0,
+          tension: 0,
+        },
+        {
+          label: 'Temp 4',
+          data: parseLinearData(`${prefix}.temp4`),
+          borderColor: '#caffbf',
+          borderWidth: 1.5,
+          pointRadius: 0,
+          tension: 0,
+        },
+        {
+          label: 'Temp 5',
+          data: parseLinearData(`${prefix}.temp5`),
+          borderColor: '#ffd6a5',
+          borderWidth: 1.5,
+          pointRadius: 0,
+          tension: 0,
+        },
+        {
+          label: 'Temp 6',
+          data: parseLinearData(`${prefix}.temp6`),
+          borderColor: '#ff70a6',
+          borderWidth: 1.5,
+          pointRadius: 0,
+          tension: 0,
+        }
+      ]
+    };
+  }, [selectedTshmuBoard, processedData, startTs]);
 
   // BMS Charts (conditional on BMS data existence)
   const bmsPackChartData = useMemo(() => {
@@ -485,6 +550,41 @@ export default function TractiveSystem({ data, boardDropouts, startTs }) {
                 options={getChartOptions('Flow (L/min) / Jitter')} 
                 data={coolingChartData} 
                 plugins={[combinedTshmuPlugin]} 
+              />
+            </div>
+          </div>
+
+          {/* TSHMU Board Temperatures */}
+          <div className="glass-panel" style={{ gridColumn: 'span 2' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+              <h3 className="section-title" style={{ fontSize: '1.15rem', marginBottom: 0 }}>TSHMU Thermistors</h3>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button
+                  className={`nav-button ${selectedTshmuBoard === '0' ? 'active' : ''}`}
+                  onClick={() => setSelectedTshmuBoard('0')}
+                  style={{ padding: '0.25rem 0.75rem', fontSize: '0.75rem' }}
+                >
+                  Board 0 Temps
+                </button>
+                <button
+                  className={`nav-button ${selectedTshmuBoard === '1' ? 'active' : ''}`}
+                  onClick={() => setSelectedTshmuBoard('1')}
+                  style={{ padding: '0.25rem 0.75rem', fontSize: '0.75rem' }}
+                >
+                  Board 1 Temps
+                </button>
+              </div>
+            </div>
+            <p className="text-slate-400" style={{ fontSize: '0.85rem', marginBottom: '1rem' }}>
+              Plots the 6 local board temperature sensors in degrees Celsius (°C) for TSHMU Board {selectedTshmuBoard}.
+            </p>
+            <div className="chart-container" style={{ height: '350px' }}>
+              <ZoomableLine 
+                title="TSHMU Thermistors" 
+                description={`Plots the 6 local board temperature sensors in degrees Celsius (°C) for TSHMU Board ${selectedTshmuBoard}.`} 
+                options={getChartOptions('Temperature (°C)')} 
+                data={tshmuTempChartData} 
+                plugins={[selectedTshmuPlugin]} 
               />
             </div>
           </div>

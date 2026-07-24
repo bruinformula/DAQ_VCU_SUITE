@@ -1210,22 +1210,55 @@ def decode_tshmu_temp_frame(can_id: int, data: bytes) -> Optional[list[dict[str,
             'board_id': board_id,
             'base_timestamp': base_ts,
             'error_flags': error_flags,
-            'temp1': _s16(data[offset],      data[offset + 1])  / 1000.0,
-            'temp2': _s16(data[offset + 2],  data[offset + 3])  / 1000.0,
-            'temp3': _s16(data[offset + 4],  data[offset + 5])  / 1000.0,
-            'temp4': _s16(data[offset + 6],  data[offset + 7])  / 1000.0,
-            'temp5': _s16(data[offset + 8],  data[offset + 9])  / 1000.0,
-            'temp6': _s16(data[offset + 10], data[offset + 11]) / 1000.0,
+            'temp1': _s16(data[offset],      data[offset + 1])  / 10.0,
+            'temp2': _s16(data[offset + 2],  data[offset + 3])  / 10.0,
+            'temp3': _s16(data[offset + 4],  data[offset + 5])  / 10.0,
+            'temp4': _s16(data[offset + 6],  data[offset + 7])  / 10.0,
+            'temp5': _s16(data[offset + 8],  data[offset + 9])  / 10.0,
+            'temp6': _s16(data[offset + 10], data[offset + 11]) / 10.0,
             'jitter_ms': j - 256 if j > 127 else j,
         })
 
     return blocks if blocks else None
 
 
+def sync_system_time(timestamp_s: float):
+    # Only sync if the new time is > Jan 1 2024 (e.g. 1704067200) to ignore junk
+    if timestamp_s < 1704067200:
+        return
+    
+    # Check if we're already reasonably synced (within 60 seconds) to avoid spamming `date -s`
+    if abs(time.time() - timestamp_s) < 60:
+        return
+        
+    try:
+        dt_str = datetime.fromtimestamp(timestamp_s).strftime('%Y-%m-%d %H:%M:%S')
+        print(f"[SYSTEM] Syncing time to {dt_str}...")
+        os.system(f'sudo date -s "{dt_str}"')
+    except Exception as e:
+        print(f"[SYSTEM] Failed to sync time: {e}")
+
 def decode_gps_cog_timesync_frame(can_id: int, data: bytes) -> Optional[dict[str, int]]:
     """Decode the mk11-smu 0x040 64-byte GPS timesync frame exactly like the MDU GUI."""
     if can_id != 0x040 or len(data) < 64:
         return None
+
+    date_val = int.from_bytes(data[8:12], 'little')
+    ms_val = int.from_bytes(data[4:8], 'little')
+    
+    if date_val > 0:
+        day = date_val // 10000
+        month = (date_val // 100) % 100
+        year = (date_val % 100) + 2000
+        hour = ms_val // 3600000
+        minute = (ms_val % 3600000) // 60000
+        second = (ms_val % 60000) // 1000
+        try:
+            from datetime import timezone
+            dt = datetime(year, month, day, hour, minute, second, tzinfo=timezone.utc)
+            sync_system_time(dt.timestamp())
+        except Exception:
+            pass
 
     return {
         'GPS_Timestamp_Us': int.from_bytes(data[0:4], 'little'),
@@ -1983,6 +2016,7 @@ async def loop_csv_logger():
     can_flush_counter = 0
     flush_every_rows = max(1, LOG_FLUSH_ROWS)
     last_sync_at = time.monotonic()
+    last_system_time = time.time()
 
     _CAN_HEADER = ['ts', 'id_hex', 'id_dec', 'dlc', 'data_hex']
 
@@ -1992,6 +2026,22 @@ async def loop_csv_logger():
 
     try:
         while True:
+            current_time = time.time()
+            if was_logging and abs(current_time - last_system_time) > 3600:
+                print("[LOGGER] Detected massive system time jump! Closing active log to rotate.")
+                if current_csv:
+                    await asyncio.to_thread(flush_and_sync_file, current_csv)
+                    current_csv.close()
+                    current_csv = None
+                    writer = None
+                if can_csv:
+                    await asyncio.to_thread(flush_and_sync_file, can_csv)
+                    can_csv.close()
+                    can_csv = None
+                    can_writer = None
+                was_logging = False
+            last_system_time = current_time
+
             try:
                 snapshot = STATE.to_signal_map()
             except Exception as exc:
@@ -2425,6 +2475,14 @@ async def stop_logging():
         "is_logging": STATE.is_logging,
         "active_log_filename": STATE.active_log_filename,
     })
+
+
+@app.post("/api/sync-time")
+async def api_sync_time(payload: dict = Body(default={})):
+    ts = payload.get("timestamp_s")
+    if ts:
+        sync_system_time(float(ts))
+    return JSONResponse({"ok": True})
 
 
 @app.get("/api/logs")
